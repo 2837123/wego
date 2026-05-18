@@ -2,15 +2,4 @@ node_modules/
 dist/
 release/
 *.exe
-export_excel.py
-captured_apis.json
-data/
-exports/
-all_items.json
 ai_config.json
-saved_products.json
-work_log.json
-work_state.json
-szwego_export.xlsx
-test.html
-*.txt

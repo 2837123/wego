@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><body style="background:#111;color:#fff;font-size:24px;padding:40px">
+<h1>Test Page</h1>
+<p id="msg">Loading...</p>
+<script>
+document.getElementById('msg').textContent = 'JS works!';
+if (window.electronAPI) {
+  window.electronAPI.getDates().then(d => {
+    document.getElementById('msg').textContent = 'IPC OK! Got ' + d.length + ' dates';
+  }).catch(e => {
+    document.getElementById('msg').textContent = 'IPC error: ' + e.message;
+  });
+} else {
+  document.getElementById('msg').textContent = 'No electronAPI (preload not loaded)';
+}
+</script>
+</body></html>

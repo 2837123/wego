@@ -1,0 +1,4 @@
+{
+  "url": "/newOrder/api/v1/shoppingCart/showShoppingCart",
+  "body": "{\n\t\"errcode\":0,\n\t\"errmsg\":\"操作成功\",\n\t\"result\":{\n\t\t\"count\":0,\n\t\t\"showCart\":false\n\t},\n\t\"status\":0,\n\t\"success\":true,\n\t\"successAttachCode\":null,\n\t\"token\":\"\"\n}"
+}
