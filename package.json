@@ -1,0 +1,46 @@
+{
+  "name": "szwego-scraper",
+  "version": "1.0.0",
+  "description": "Shop data extractor for szwego.com",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.szwego.scraper",
+    "productName": "商品组装器",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "builder.js",
+      "index.html",
+      "export_template.py",
+      "all_items.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "export_template.py",
+        "to": "export_template.py"
+      }
+    ],
+    "win": {
+      "target": "dir",
+      "icon": null
+    },
+    "portable": {
+      "artifactName": "${productName}.exe"
+    }
+  },
+  "author": "qingf",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {}
+}
