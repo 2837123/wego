@@ -8,16 +8,13 @@ if len(sys.argv) < 3:
 data_file = sys.argv[1]
 out_file = sys.argv[2]
 import os
-# Look for template next to script first, then fall back to hardcoded path
+# Look for template next to script
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _tpl_local = os.path.join(_script_dir, 'shitimoban.xlsx')
-_tpl_fallback = r'C:\Users\qingf\Desktop\下载\shitimoban.xlsx'
 if os.path.exists(_tpl_local):
     tpl_file = _tpl_local
-elif os.path.exists(_tpl_fallback):
-    tpl_file = _tpl_fallback
 else:
-    print('Error: Template file not found at "' + _tpl_local + '" or "' + _tpl_fallback + '"')
+    print('Error: Template file not found at "' + _tpl_local + '". Please copy shitimoban.xlsx to the project directory.')
     sys.exit(1)
 
 with open(data_file, 'r', encoding='utf-8') as f:

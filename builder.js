@@ -14,6 +14,17 @@ var PAGE = 200;
 var $ = function(id) { return document.getElementById(id); };
 var esc = function(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; };
 
+function api(method, url, body) {
+  var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) {
+    opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+  }
+  return fetch(url, opts).then(function(r) {
+    var ct = r.headers.get('content-type') || '';
+    return ct.includes('application/json') ? r.json() : r.text();
+  });
+}
+
 function rebuildSavedIds() {
   savedIds = {};
   P.forEach(function(p) {
@@ -47,15 +58,10 @@ function refreshCardMarks() {
   var panel = $('item-panel');
   panel.innerHTML = '<div style="padding:20px;color:#888">初始化...</div>';
 
-  if (!window.api) {
-    panel.innerHTML = '<div style="padding:20px;color:#e74c3c">错误: api 不可用</div>';
-    return;
-  }
-
   // Load saved products AND work state together, then restore
   Promise.all([
-    window.api.loadSaved(),
-    window.api.loadState()
+    api('GET', '/api/saved'),
+    api('GET', '/api/state')
   ]).then(function(results) {
     // Restore saved products
     try { P = JSON.parse(results[0]) || []; } catch(e) {}
@@ -76,7 +82,7 @@ function refreshCardMarks() {
   });
 
   // Load work log summary
-  window.api.getLog().then(function(json) {
+  api('GET', '/api/log').then(function(json) {
     try {
       var log = JSON.parse(json);
       if (log.length) {
@@ -88,10 +94,10 @@ function refreshCardMarks() {
   });
 
   // Log app start
-  window.api.log('app-started', '应用启动');
+  api('POST', '/api/log', { action: 'app-started', detail: '应用启动' });
 
   // Load dates
-  window.api.dates().then(function(dates) {
+  api('GET', '/api/dates').then(function(dates) {
     var sel = $('dateFilter');
     dates.forEach(function(d) {
       var o = document.createElement('option');
@@ -111,7 +117,7 @@ function loadPage(filter) {
   filter.img = $('imgFilter').value;
   filter.limit = PAGE;
 
-  return window.api.page(filter).then(function(r) {
+  return api('POST', '/api/page', filter).then(function(r) {
     total = r.total;
     offset = filter.offset + r.items.length;
 
@@ -220,7 +226,7 @@ function scheduleStateSave() {
       lastProduct: CP ? { style: CP.style, imgs: CP.imgs.length, price: CP.price } : null,
       time: new Date().toISOString()
     };
-    window.api.saveState(JSON.stringify(state));
+    api('POST', '/api/state', JSON.stringify(state));
   }, 2000);
 }
 
@@ -387,7 +393,7 @@ function renderBuilder() {
 
 // ---- Save ----
 function persistProducts() {
-  window.api.save(JSON.stringify(P)).catch(function(e) { console.error(e); });
+  api('POST', '/api/saved', P).catch(function(e) { console.error(e); });
 }
 
 function doSave() {
@@ -409,7 +415,7 @@ function doSave() {
     sourceIds: Object.keys(S)
   });
   persistProducts();
-  window.api.log('product-saved', '#' + CP.style + ' ' + CP.imgs.length + '图 ¥' + CP.price);
+  api('POST', '/api/log', { action: 'product-saved', detail: '#' + CP.style + ' ' + CP.imgs.length + '图 ¥' + CP.price });
   S = {}; SC = {}; CP = null;
   document.querySelectorAll('.item-card').forEach(function(c) { c.classList.remove('selected'); c.querySelector('.check').textContent = ''; });
   clearBuilder(); updateStatus(); renderSaved();
@@ -493,49 +499,80 @@ $('btnAiProcess').onclick = function() {
   $('aiProcessStatus').textContent = '0 / ' + toProcess.length;
   aiResults = null;
 
-  window.api.aiProcess(aiConfig, toProcess, prompts, enabled).then(function(r) {
-    if (r.ok) {
-      if (!aiResults) aiResults = [];
-      r.results.forEach(function(res) {
-        var prod = toProcess[res.index];
-        if (prod) {
-          processedIds[prod.id] = true;
-          res._pid = prod.id;
-        }
-        aiResults.push(res);
-      });
-      aiDone = true;
-      refreshCardMarks();
+  // Store context for retry
+  window._aiContext = { config: aiConfig, products: toProcess, prompts: prompts, enabled: enabled };
+  window._aiSseDoneReceived = false;
 
-      if (r.failed && r.failed.length) {
-        window._lastFailed = { config: aiConfig, products: toProcess, prompts: prompts, enabled: enabled, failed: r.failed };
-        var statusHtml = '<span style="color:#d2991d">⚠ ' + r.failed.length + ' 个字段为空，已重试5次</span>' +
-          '<br><button id="btnRetryFailed" style="margin-top:4px;background:#d2991d;color:#000;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">手动重试失败字段</button>';
-        $('aiProcessStatus').innerHTML = statusHtml;
-        document.getElementById('btnRetryFailed').onclick = retryFailedFields;
-        toast('AI 处理完成，但有 ' + r.failed.length + ' 个字段失败', 'err');
+  api('POST', '/api/ai/process', { config: aiConfig, products: toProcess, prompts, enabled })
+    .then(function(initR) {
+      if (!initR.ok) {
+        $('aiProcessStatus').innerHTML = '<span style="color:#f85149">启动失败</span>';
+        toast('AI 处理启动失败', 'err');
         btn.disabled = false; btn.textContent = 'AI 处理';
-      } else {
-        $('aiProcessStatus').innerHTML = '<span style="color:#7ee787">AI 处理完成 (' + r.results.length + ' 个)</span>';
-        toast('AI 处理完成', 'ok');
-        $('btnAiProcess').style.background = '#238636';
-        $('btnAiProcess').textContent = 'AI 已处理 ✓';
       }
-    } else {
-      $('aiProcessStatus').innerHTML = '<span style="color:#f85149">处理失败</span>';
-      toast('AI 处理失败', 'err');
+    }).catch(function(e) {
+      $('aiProcessStatus').innerHTML = '<span style="color:#f85149">' + e.message + '</span>';
       btn.disabled = false; btn.textContent = 'AI 处理';
-    }
-  }).catch(function(e) {
-    $('aiProcessStatus').innerHTML = '<span style="color:#f85149">' + e.message + '</span>';
-    btn.disabled = false; btn.textContent = 'AI 处理';
-  });
+    });
 };
 
-// Listen for progress
-window.api.onAiProgress(function(d) {
-  $('aiProcessStatus').textContent = d.index + ' / ' + d.total;
-});
+// Listen for AI progress via SSE
+(function initAiSSE() {
+  var es = new EventSource('/api/ai/progress');
+  window._aiSseDoneReceived = false;
+  es.onmessage = function(e) {
+    try {
+      var d = JSON.parse(e.data);
+      if (d.done) {
+        if (window._aiSseDoneReceived) return;
+        window._aiSseDoneReceived = true;
+        // Fetch final result
+        fetch('/api/ai/result').then(function(r) { return r.json(); }).then(function(r) {
+          if (r.ok && r.results) {
+            var ctx = window._aiContext;
+            var toProcess = ctx ? ctx.products : P;
+            r.results.forEach(function(res) {
+              var prod = toProcess[res.index];
+              if (prod) {
+                processedIds[prod.id] = true;
+                res._pid = prod.id;
+              }
+            });
+            if (!aiResults) aiResults = [];
+            aiResults.push.apply(aiResults, r.results);
+            aiDone = true;
+            refreshCardMarks();
+
+            var btn = $('btnAiProcess');
+            if (r.failed && r.failed.length) {
+              window._lastFailed = {
+                config: (ctx || {}).config, products: toProcess,
+                prompts: (ctx || {}).prompts, enabled: (ctx || {}).enabled,
+                failed: r.failed
+              };
+              var statusHtml = '<span style="color:#d2991d">⚠ ' + r.failed.length + ' 个字段为空</span>' +
+                '<br><button id="btnRetryFailed" style="margin-top:4px;background:#d2991d;color:#000;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">手动重试失败字段</button>';
+              $('aiProcessStatus').innerHTML = statusHtml;
+              var retryBtn = document.getElementById('btnRetryFailed');
+              if (retryBtn) retryBtn.onclick = retryFailedFields;
+              toast('AI 处理完成，但有 ' + r.failed.length + ' 个字段失败', 'err');
+              btn.disabled = false; btn.textContent = 'AI 处理';
+            } else {
+              $('aiProcessStatus').innerHTML = '<span style="color:#7ee787">AI 处理完成 (' + r.results.length + ' 个)</span>';
+              toast('AI 处理完成', 'ok');
+              btn.disabled = false;
+              btn.textContent = 'AI 处理';
+              btn.style.background = '';
+              scheduleStateSave();
+            }
+          }
+        });
+      } else {
+        $('aiProcessStatus').textContent = d.index + ' / ' + d.total;
+      }
+    } catch(ex) {}
+  };
+})();
 
 // ---- Split set into individual products ----
 function splitSet(styles, prices) {
@@ -586,29 +623,24 @@ function retryFailedFields() {
   var btn = document.getElementById('btnRetryFailed');
   if (btn) { btn.disabled = true; btn.textContent = '重试中...'; }
 
+  // Only retry products that actually had failures
+  var failedIndices = {};
+  info.failed.forEach(function(f) { failedIndices[f.productIndex] = true; });
+  var retryProducts = info.products.filter(function(p, i) { return failedIndices[i]; });
+
+  // Only enable fields that actually failed
+  var failedFields = {};
+  info.failed.forEach(function(f) { failedFields[f.field] = true; });
+  var retryEnabled = {};
+  Object.keys(info.enabled).forEach(function(k) { retryEnabled[k] = !!failedFields[k]; });
+
   var retryConfig = Object.assign({}, info.config);
-  window.api.aiProcess(retryConfig, info.products, info.prompts, info.enabled).then(function(r) {
-    if (r.ok) {
-      if (r.results) {
-        r.results.forEach(function(res) {
-          var existing = aiResults.find(function(a) { return a.index === res.index; });
-          if (existing) {
-            Object.assign(existing.fields, res.fields);
-          } else {
-            aiResults.push(res);
-          }
-        });
-      }
-      if (r.failed && r.failed.length) {
-        window._lastFailed = { config: info.config, products: info.products, prompts: info.prompts, enabled: info.enabled, failed: r.failed };
-        if (btn) { btn.disabled = false; btn.textContent = '手动重试失败字段 (' + r.failed.length + '个)'; }
-        toast('仍有 ' + r.failed.length + ' 个字段失败', 'err');
-      } else {
-        $('aiProcessStatus').innerHTML = '<span style="color:#7ee787">AI 处理完成（已修复）</span>';
-        toast('全部字段已填充', 'ok');
-      }
-    }
-  });
+  window._aiContext = { config: retryConfig, products: retryProducts, prompts: info.prompts, enabled: retryEnabled };
+  window._aiSseDoneReceived = false;
+  $('aiProcessStatus').textContent = '0 / ' + retryProducts.length;
+
+  api('POST', '/api/ai/process', { config: retryConfig, products: retryProducts, prompts: info.prompts, enabled: retryEnabled })
+    .catch(function(e) { console.error(e); });
 }
 
 // ---- Export ----
@@ -629,8 +661,9 @@ $('btnExport').onclick = function() {
   });
 
   var exportData = { products: exportProds, hasAI: !!aiResults };
-  window.api.export(JSON.stringify(exportData)).then(function(p) {
-    window.api.log('export', '导出 ' + P.length + ' 个商品到 ' + p);
+  api('POST', '/api/export', exportData).then(function(r) {
+    if (r.error) { toast('失败: ' + r.error, 'err'); return; }
+    api('POST', '/api/log', { action: 'export', detail: '导出 ' + P.length + ' 个商品到 ' + r.path });
     P = [];
     persistProducts();
     renderSaved();
@@ -643,12 +676,12 @@ $('btnRefresh').onclick = function() {
   if (!confirm('从网站获取近一周数据？')) return;
   var btn = $('btnRefresh'); btn.disabled = true; btn.textContent = '刷新中...';
   $('stats').textContent = '获取中...';
-  window.api.fetch().then(function(r) {
+  api('POST', '/api/fetch').then(function(r) {
     if (r.error) { toast('刷新失败: ' + r.error, 'err'); }
     else {
       toast('新增 ' + r.count + ' 条', 'ok');
-      window.api.log('refresh', '新增 ' + r.count + ' 条');
-      window.api.dates().then(function(dates) {
+      api('POST', '/api/log', { action: 'refresh', detail: '新增 ' + r.count + ' 条' });
+      api('GET', '/api/dates').then(function(dates) {
         var sel = $('dateFilter'); sel.innerHTML = '<option value="">全部日期</option>';
         dates.forEach(function(d) { var o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
         loadPage({ offset: 0 });
@@ -662,16 +695,27 @@ $('btnRefresh').onclick = function() {
 $('btnLogin').onclick = function() {
   $('btnLogin').disabled = true;
   $('btnLogin').textContent = '等待登录...';
-  window.api.login().then(function() {
-    toast('请在登录窗口扫码', 'ok');
+  api('POST', '/api/login').then(function() {
+    toast('请在弹出的浏览器窗口扫码', 'ok');
   });
 };
 
-window.api.onLoginDone(function() {
-  $('btnLogin').disabled = false;
-  $('btnLogin').textContent = '重新登录';
-  toast('登录成功！Cookie 已更新', 'ok');
-});
+// Listen for login completion via SSE
+(function initLoginSSE() {
+  var es = new EventSource('/api/login/status');
+  es.onmessage = function(e) {
+    try {
+      var d = JSON.parse(e.data);
+      if (d.done) {
+        $('btnLogin').disabled = false;
+        $('btnLogin').textContent = '重新登录';
+        toast('登录成功！Cookie 已更新', 'ok');
+        es.close();
+        initLoginSSE();
+      }
+    } catch(ex) {}
+  };
+})();
 
 // ---- Toast ----
 function toast(msg, type) {
@@ -702,7 +746,7 @@ function setAiDot(ok) {
   dot.title = ok ? 'AI 已连接' : 'AI 未连接';
 }
 
-window.api.aiLoadConfig().then(function(json) {
+api('GET', '/api/ai/config').then(function(json) {
   try {
     var c = JSON.parse(json);
     if (c.apiKey) { aiConfig.apiKey = c.apiKey; $('aiKey').value = c.apiKey; }
@@ -734,7 +778,7 @@ $('btnAiSave').onclick = function() {
   document.querySelectorAll('.ai-toggle').forEach(function(cb) {
     aiConfig.prompts_enabled[cb.getAttribute('data-key')] = cb.checked;
   });
-  window.api.aiSaveConfig(aiConfig).then(function() {
+  api('POST', '/api/ai/config', aiConfig).then(function() {
     setAiDot(true);
     toast('AI 配置已保存', 'ok');
   });
@@ -744,7 +788,7 @@ $('btnAiTest').onclick = function() {
   var cfg = { apiKey: $('aiKey').value.trim(), model: $('aiModel').value };
   if (!cfg.apiKey) { toast('请先输入 API Key', 'err'); return; }
   $('btnAiTest').disabled = true; $('btnAiTest').textContent = '连接中...'; $('aiResult').textContent = '';
-  window.api.aiTest(cfg).then(function(r) {
+  api('POST', '/api/ai/test', cfg).then(function(r) {
     $('btnAiTest').disabled = false; $('btnAiTest').textContent = '测试连接';
     if (r.ok) {
       $('aiResult').innerHTML = '<span style="color:#7ee787">连接成功</span> ' + esc(r.reply||'') + ' (' + (r.model||cfg.model) + ')';
