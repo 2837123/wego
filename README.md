@@ -88,6 +88,15 @@ npm start
 - 首次 Web 版发布
 - 完整素材浏览 / 商品组装 / AI 填充 / Excel 导出流程
 
+## 二次开发
+
+当前实现写死了 szwego 微购相册的数据源和 eweishop 的导出模板。如需适配自己的平台，请阅读 **[二次开发说明 →](DEVELOPMENT.md)**
+
+核心可替换点：
+- **数据源**：修改 `server.js` 中的 `albumId` / `shopId` 或替换 API 地址
+- **导出格式**：修改 `export_template.py` 中的列定义和模板映射
+- **登录方式**：替换 Puppeteer 登录流程为账号密码 / API Token / OAuth
+
 ## 技术栈
 
 Node.js · Express · Puppeteer · Python · DeepSeek API · openpyxl
