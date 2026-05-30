@@ -1,208 +1,247 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/node-22%2B-green?style=flat-square&logo=node.js" alt="node">
-  <img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="prs">
-</p>
+<div align="center">
 
-<h1 align="center">商品组装器</h1>
-<p align="center"><strong>WeGo Product Builder</strong></p>
-<p align="center">一键抓取 · 智能组装 · AI 填充 · 批量导出</p>
-<p align="center">将微信私域电商的商品动态，自动转化为可导入任意平台的标准化 Excel</p>
+<img src="https://img.shields.io/badge/WeGo_Product_Builder-v1.0.1-000000?style=for-the-badge&logo=windowsterminal&logoColor=white" alt="WeGo">
+
+<img src="https://img.shields.io/badge/Node.js-22%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="node">
+<img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="python">
+<img src="https://img.shields.io/badge/Puppeteer-24-40B5A4?style=flat-square&logo=puppeteer&logoColor=white" alt="puppeteer">
+<img src="https://img.shields.io/badge/DeepSeek_API-Ready-4D6BFE?style=flat-square&logo=openai&logoColor=white" alt="deepseek">
+<img src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square" alt="license">
+
+<br>
+<br>
+
+<img src="https://img.shields.io/badge/📦_数据-22,541_条动态-blue?style=for-the-badge" alt="data">
+<img src="https://img.shields.io/badge/🤖_AI-9_字段并行-green?style=for-the-badge" alt="ai">
+<img src="https://img.shields.io/badge/📊_导出-31_列_Excel-orange?style=for-the-badge" alt="export">
+<img src="https://img.shields.io/badge/⚡_速度-3秒_导出-red?style=for-the-badge" alt="speed">
+
+<br>
+<br>
+
+<h1>商品组装器</h1>
+<h3><em>WeGo Product Builder</em></h3>
+
+**抓取 · 组装 · AI 填充 · 导出 — 私域电商商品上架，从一天缩短到几分钟**
+
+</div>
 
 ---
 
-## 它解决什么问题？
+## 场景
 
-做私域电商的都知道——商品上架是最痛苦的事。相册里几千条动态，每条都是一张图配一段文案，要手动拼成一件完整商品，再填名称、写详情、选分类、标价格……一个人一天搞不了几件。
+做私域服装批发的都经历过——**相册里堆了几千条动态，每条一张图配一段文案**。要把它们变成一件件能上架的商品：找图、拼描述、取标题、选分类、标价格、填尺码……
 
-**这个工具把整个过程自动化了。**
+> 一个人，一天，搞不了 10 件。
 
-22,000+ 条商品动态 → 几秒钟检索到你要的 → 点击选中 → AI 自动填充 9 个字段 → 一键导出 31 列标准 Excel，直接导入目标系统。
-
-原来一个人一天的活，现在几分钟干完。
-
----
-
-## 工作流程
+这个工具把整条链路压成了 **4 步操作**：
 
 ```
-扫码登录 → 拉取数据 → 浏览筛选 → 多选组装 → AI 填充 → 导出 Excel
+① 扫码登录 → ② 搜索选中 → ③ AI 一鍵填充 → ④ 导出 Excel
 ```
-
-| 步骤 | 工具在做什么 | 你只需要 |
-|------|-------------|---------|
-| 登录 | Puppeteer 自动打开 szwego 扫码页，Cookie 持久化 | 微信扫一下 |
-| 抓取 | 增量拉取商品相册，图片/文案/款号/价格全部本地缓存 | 点「刷新」 |
-| 筛选 | 22,541 条卡片按日期分组，支持款号/关键词实时搜索 | 输入关键词 → Enter |
-| 组装 | 多选卡片自动合并图文、提取款号、汇总价格、图片去重 | 点击选中卡片 |
-| AI 填充 | DeepSeek 并行生成名称/关键词/分类/规格/详情等 9 个字段 | 点「AI 填充」 |
-| 导出 | Python openpyxl 按 31 列模板输出，自动生成 S/M/L 尺码行 | 点「导出」 |
 
 ---
 
-## 功能矩阵
+## 目录
 
-<table>
-<tr><td width="50%">
-
-### 数据层
-- **22,541 条动态** 本地缓存，增量更新
-- 按日期分组浏览，分页加载无延迟
-- 实时搜索：款号、标题、价格区间
-- 已处理/已保存标记持久化
-
-### 组装层
-- 多选卡片自动合并图文
-- 款号智能提取 + 价格汇总
-- 图片去重排序
-
-</td><td width="50%">
-
-### AI 层
-- DeepSeek API 一键填充 9 个字段
-- 每个字段独立提示词模板 + 开关
-- 失败自动重试，支持流式输出
-- 兼容 OpenAI 格式（可切换模型）
-
-### 导出层
-- Python openpyxl 专业级 Excel
-- 31 列 eweishop 模板
-- 每商品自动生成 S/M/L 三行
-- 单文件 ≤3 秒
-
-</td></tr>
-</table>
+| # | 章节 |
+|---|------|
+| 🚀 | [快速开始](#快速开始) |
+| ⌨️ | [快捷键](#快捷键) |
+| 🧠 | [工作流程](#工作流程) |
+| ⚙️ | [功能矩阵](#功能矩阵) |
+| 🏗 | [技术架构](#技术架构) |
+| 🔧 | [二次开发](#二次开发) |
+| ❓ | [常见问题](#常见问题) |
 
 ---
 
 ## 快速开始
 
 ```bash
-# 1. 安装
-npm install
-pip install openpyxl
-
-# 2. 启动
+git clone https://github.com/2837123/wego.git && cd wego
+npm install && pip install openpyxl
 npm start
-
-# 3. 使用
-# 浏览器打开 http://localhost:3000
-# 扫码登录 → 刷新数据 → 开始组装
 ```
 
-### 快捷键
+打开 `http://localhost:3000` → 扫码 → 刷新 → 开工。
 
-| 操作 | 按键 |
-|------|------|
-| 保存商品 | `Enter` |
-| 拆分保存 | `Shift + Enter` |
-| 右键保存 | 右键点击素材面板 |
-| 搜索 | 输入关键词 → `Enter` |
+---
+
+## 快捷键
+
+| `Enter` | `Shift` + `Enter` | 右键 |
+|:--:|:--:|:--:|
+| 保存商品 | 拆分保存 | 同 Enter |
+
+---
+
+## 工作流程
+
+<table>
+<tr>
+<td align="center" width="20%"><b>🔐 登录</b><br><sub>微信扫码</sub></td>
+<td align="center" width="5%">→</td>
+<td align="center" width="20%"><b>📥 抓取</b><br><sub>22K+ 条本地缓存</sub></td>
+<td align="center" width="5%">→</td>
+<td align="center" width="20%"><b>🔍 筛选</b><br><sub>款号/关键词搜索</sub></td>
+<td align="center" width="5%">→</td>
+<td align="center" width="20%"><b>🧩 组装</b><br><sub>多选合并·自动去重</sub></td>
+</tr>
+<tr><td colspan="7"></td></tr>
+<tr>
+<td colspan="3" align="center"><b>🤖 AI 填充</b><br><sub>名称·副标题·关键词·分类·规格·详情·9字段并行生成</sub></td>
+<td align="center">→</td>
+<td colspan="3" align="center"><b>📊 导出 Excel</b><br><sub>31 列模板 · S/M/L 自动三行 · 3 秒出文件</sub></td>
+</tr>
+</table>
+
+---
+
+## 功能矩阵
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+> ### 📦 数据处理
+>
+> | 功能 | 细节 |
+> |------|------|
+> | 数据量 | 22,541 条动态，74MB 本地缓存 |
+> | 更新方式 | 增量拉取，Puppeteer 自动登录 |
+> | 浏览模式 | 按日期分组，无限滚动分页 |
+> | 搜索 | 实时过滤：款号 · 关键词 · 日期 |
+> | 状态标记 | ✓ 已保存 · AI 已处理 · 重启恢复 |
+
+</td>
+<td width="50%" valign="top">
+
+> ### 🧩 商品组装
+>
+> | 功能 | 细节 |
+> |------|------|
+> | 多选合并 | 跨日期多选，自动图文拼接 |
+> | 款号提取 | 正则自动匹配款号格式 |
+> | 价格识别 | 多来源价格智能去重汇总 |
+> | 图片处理 | 自动去重 + 保持原始顺序 |
+> | 拆分模式 | Shift+Enter 一键拆成多件 |
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+> ### 🤖 AI 引擎
+>
+> | 功能 | 细节 |
+> |------|------|
+> | 模型 | DeepSeek v4 (兼容 OpenAI 格式) |
+> | 并行生成 | 9 个字段同时请求，5-10 秒完成 |
+> | 提示词 | 每字段独立模板，支持自定义 |
+> | 容错 | 失败自动重试，流式输出 |
+> | 可控性 | 每字段独立开关，可部分 AI / 部分手填 |
+
+</td>
+<td width="50%" valign="top">
+
+> ### 📊 导出引擎
+>
+> | 功能 | 细节 |
+> |------|------|
+> | 格式 | Excel .xlsx (openpyxl) |
+> | 模板 | 31 列 eweishop 标准 |
+> | 尺码 | S / M / L 自动三行展开 |
+> | 性能 | 单文件 ≤3 秒 |
+> | 历史 | 导出记录可回溯，支持重新下载 |
+
+</td>
+</tr>
+</table>
 
 ---
 
 ## 技术架构
 
 ```
-┌─────────────────────────────────────────────┐
-│                 Browser UI                   │
-│         index.html  +  builder.js            │
-├─────────────────────────────────────────────┤
-│              Express Server                  │
-│   API Router · Auth · Data · AI · Export    │
-├─────────────────────────────────────────────┤
-│   Puppeteer      │   DeepSeek API            │
-│   (登录 + 抓取)   │   (AI 字段生成)           │
-├─────────────────────────────────────────────┤
-│   Python openpyxl                            │
-│   (Excel 模板导出)                            │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                   Browser UI                     │
+│              Vanilla JS · 深色主题                 │
+├──────────────────────────────────────────────────┤
+│              Express API Server                  │
+│   /api/page   /api/saved   /api/ai   /api/export │
+├──────────────────┬───────────────────────────────┤
+│    Puppeteer     │       DeepSeek API            │
+│  szwego 登录抓取  │   9 字段并行 · 流式生成        │
+├──────────────────┴───────────────────────────────┤
+│              Python openpyxl                     │
+│        31 列模板 · S/M/L 尺码 · 3 秒导出           │
+└──────────────────────────────────────────────────┘
 ```
 
-**技术栈：** Node.js · Express · Puppeteer · Python · DeepSeek API · openpyxl
-
----
-
-## 环境要求
-
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| Node.js | ≥ 22 | 服务端运行 |
-| Python | ≥ 3.12 | Excel 导出 |
-| openpyxl | latest | Excel 模板生成 |
-| Chrome | — | Puppeteer 自动登录（自动下载 Chromium） |
-| DeepSeek API Key | — | AI 字段填充（[获取](https://platform.deepseek.com)） |
+| Layer | Stack | Purpose |
+|-------|-------|---------|
+| 🖥 Frontend | Vanilla JS + CSS Grid | 卡片浏览 · 多选组装 · 实时搜索 |
+| ⚙️ Backend | Node.js + Express | REST API · 路由 · 状态管理 |
+| 🔐 Auth | Puppeteer + Cookie Persist | 扫码登录 · 会话保持 |
+| 🤖 AI | DeepSeek API (OpenAI Compatible) | 9 字段智能填充 |
+| 📊 Export | Python openpyxl | 31 列模板 · 三行尺码输出 |
 
 ---
 
 ## 二次开发
 
-当前适配 **szwego 微购** 数据源和 **eweishop** 导出格式。如需切换到其他平台，硬编码项极少且集中在 `server.js` 中。
+硬编码项极少且高度集中，适配新平台只需改 **一处文件** 的 **几个常量**。
 
-> 完整适配指南 → **[DEVELOPMENT.md](DEVELOPMENT.md)**
-
-```
-可替换项：
-├── 数据源      server.js:363-364  (albumId / shopId)
-├── API 地址    server.js:374,384  (szwego.com → 你的API)
-├── 登录方式    server.js:458-468  (扫码 → 账号密码 / Token / OAuth)
-├── AI 服务     server.js:174      (DeepSeek → OpenAI / 其他)
-├── 导出模板    export_template.py (31列 → 你的格式)
-└── 端口        server.js:7        (3000 → 你的端口)
+```yaml
+数据源: server.js:363-364   # albumId / shopId
+API:    server.js:374,384   # szwego.com → 你的域名
+登录:   server.js:458-468   # 扫码 → 账号密码 / Token
+AI:     server.js:174       # DeepSeek → OpenAI / 其他
+导出:   export_template.py  # 31 列 → 你的模板
+端口:   server.js:7         # 3000 → 自定义
 ```
 
----
-
-## 项目结构
-
-```
-wego/
-├── server.js              # 核心服务端（API、AI、登录、数据）
-├── builder.js             # 前端交互逻辑
-├── index.html             # 前端界面（深色主题）
-├── export_template.py     # Excel 导出（31 列模板）
-├── shitimoban.xlsx        # 目标系统导入模板
-├── captured_apis.json     # API 请求记录（调试用）
-├── data/                  # 本地缓存（不进 git）
-├── szwego-profile/        # 浏览器 Profile（不进 git）
-├── exports/               # 导出文件（不进 git）
-└── DEVELOPMENT.md         # 二次开发指南
-```
+> 📖 完整指南 → **[DEVELOPMENT.md](DEVELOPMENT.md)**
 
 ---
 
 ## 常见问题
 
 <details>
-<summary><strong>数据刷不出来？</strong></summary>
-点击「重新登录」→ 扫码 → 再点「刷新数据」。如果还是没反应，重启服务再试。
+<summary>数据刷不出来？</summary>
+
+**重新登录 → 扫码 → 刷新数据**。还不行就重启：`Ctrl+C` → `npm start`。
 </details>
 
 <details>
-<summary><strong>AI 填充失败？</strong></summary>
-检查 AI 配置中的 API Key 是否正确、余额是否充足。网络超时可调大 `server.js:180` 的 timeout。
+<summary>AI 填充失败？</summary>
+
+检查 API Key 有效 + 余额充足。超时可调 `server.js:180`。
 </details>
 
 <details>
-<summary><strong>端口被占用？</strong></summary>
+<summary>端口冲突？</summary>
 
-```bash
-PORT=8080 npm start
-```
+`PORT=8080 npm start`
 </details>
 
 <details>
-<summary><strong>如何清除登录状态重新扫码？</strong></summary>
-删除 `szwego-profile/` 目录后重启。
+<summary>清除登录？</summary>
+
+`rm -rf szwego-profile/` 后重启。
 </details>
 
 ---
 
-## License
+<div align="center">
 
-MIT © 2026 qingf
+### ⭐ 觉得有用？给个 Star
 
-<p align="center">
-  <sub>Built with Node.js · Express · Puppeteer · DeepSeek API · Python</sub>
-</p>
+**Built with**
+
+Node.js · Express · Puppeteer · DeepSeek API · Python · openpyxl
+
+[MIT License](LICENSE) · [二次开发指南](DEVELOPMENT.md) · [更新日志](https://github.com/2837123/wego/releases)
+
+</div>
