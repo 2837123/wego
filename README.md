@@ -244,4 +244,10 @@ Node.js · Express · Puppeteer · DeepSeek API · Python · openpyxl
 
 [MIT License](LICENSE) · [二次开发指南](DEVELOPMENT.md) · [更新日志](https://github.com/2837123/wego/releases)
 
+<br>
+
+<a href="https://img.shields.io/badge/WeChat-QF12--17-07C160?style=for-the-badge&logo=wechat&logoColor=white"><img src="https://img.shields.io/badge/WeChat-QF12--17-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="wechat"></a>
+
+<sub>技术咨询 · 定制开发 · 商务合作</sub>
+
 </div>
