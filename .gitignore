@@ -6,3 +6,5 @@ data/
 szwego-profile/
 exports/
 ai_config.json
+.cache/
+.DS_Store
