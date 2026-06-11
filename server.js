@@ -25,6 +25,7 @@ const AI_CONFIG_FILE = path.join(DATA_DIR, 'ai_config.json');
 
 // ── Load data into memory ──────────────────────────────────────────
 let allItems = [];
+let itemProductType = {};
 
 function loadData() {
   console.log('Loading data...');
@@ -37,6 +38,26 @@ function loadData() {
   const raw = fs.readFileSync(DATA_FILE_READ, 'utf-8');
   allItems = JSON.parse(raw);
   allItems.sort((a, b) => (b.time_stamp || 0) - (a.time_stamp || 0));
+
+  // Precompute product type (单品/套装) for each item
+  itemProductType = {};
+  let mainIndices = [];
+  for (let i = 0; i < allItems.length; i++) {
+    const t = allItems[i].title || '';
+    if (/#\d{5}/.test(t) && /新款|大货|现货/.test(t) && /🛒/.test(t)) {
+      mainIndices.push(i);
+    }
+  }
+  for (let mi = 0; mi < mainIndices.length; mi++) {
+    const mainIdx = mainIndices[mi];
+    const t = allItems[mainIdx].title || '';
+    const styleCount = (t.match(/#\d{5}/g) || []).length;
+    const type = styleCount >= 2 ? 'set' : 'single';
+    const prevIdx = mi > 0 ? mainIndices[mi - 1] : -1;
+    for (let k = prevIdx + 1; k <= mainIdx; k++) {
+      itemProductType[allItems[k].goods_id] = type;
+    }
+  }
   console.log(`Loaded ${allItems.length} items in ${Date.now() - t0}ms`);
 }
 
@@ -76,6 +97,7 @@ app.post('/api/page', (_req, res) => {
   const search = (filter.search || '').toLowerCase();
   const date = filter.date || '';
   const imgMode = filter.img || '0';
+  const setMode = filter.set || '0';
   const offset = filter.offset || 0;
   const limit = Math.min(filter.limit || 200, 200);
 
@@ -84,9 +106,14 @@ app.post('/api/page', (_req, res) => {
   if (date) result = result.filter(i => i.time === date);
   if (imgMode === '1') result = result.filter(i => i.imgsSrc && i.imgsSrc.length);
   if (imgMode === '2') result = result.filter(i => !i.imgsSrc || !i.imgsSrc.length);
+  if (setMode === '1') result = result.filter(i => itemProductType[i.goods_id] !== 'set');
+  if (setMode === '2') result = result.filter(i => itemProductType[i.goods_id] === 'set');
 
   const total = result.length;
-  const page = result.slice(offset, offset + limit);
+  const page = result.slice(offset, offset + limit).map(i => ({
+    ...i,
+    isSet: itemProductType[i.goods_id] === 'set'
+  }));
   res.json({ total, items: page });
 });
 
@@ -95,6 +122,52 @@ app.get('/api/dates', (_req, res) => {
   const set = new Set();
   for (const i of allItems) { if (i.time) set.add(i.time); }
   res.json([...set].sort().reverse());
+});
+
+// Smart select: find related items for a main post
+app.get('/api/smart-select/:goodsId', (req, res) => {
+  const refIdx = allItems.findIndex(i => String(i.goods_id) === String(req.params.goodsId));
+  if (refIdx < 0) return res.json({ items: [] });
+
+  const ref = allItems[refIdx];
+  const refDate = ref.time || '';
+  const refTs = ref.time_stamp || 0;
+
+  // Collect items posted after the main post (higher time_stamp = lower index)
+  const candidates = [];
+  for (let k = refIdx - 1; k >= 0; k--) {
+    const item = allItems[k];
+    if (item.time !== refDate) break;
+    // Stop at another main post
+    const t = item.title || '';
+    if (/#\d{5}/.test(t) && /新款|大货|现货/.test(t) && /🛒/.test(t)) break;
+    candidates.push(item);
+  }
+
+  // Classify each candidate
+  function tagOrder(item) {
+    const t = item.title || '';
+    const isMain = /#\d{5}/.test(t) && /新款|大货|现货/.test(t) && /🛒/.test(t);
+    const isDetail = /实拍细节图/.test(t);
+    const isSize = !isMain && /THE NEXT TREND/i.test(t);
+    const isSep = !isMain && (/——/.test(t) || /〰️/.test(t)) && !/🛒/.test(t);
+    if (isSep) return 9; // skip separators
+    // Model with text = 1, model empty = 2
+    if (!isMain && !isDetail && !isSize) return t.trim() ? 1 : 2;
+    if (isDetail) return 3;
+    if (isSize) return 4;
+    return 9;
+  }
+
+  // Filter out separators and sort by tag order, oldest first within same type
+  const filtered = candidates.filter(c => tagOrder(c) !== 9);
+  filtered.sort((a, b) => {
+    const diff = tagOrder(a) - tagOrder(b);
+    if (diff !== 0) return diff;
+    return (a.time_stamp || 0) - (b.time_stamp || 0);
+  });
+
+  res.json({ items: filtered });
 });
 
 // Saved products
@@ -283,7 +356,7 @@ app.post('/api/ai/process', async (_req, res) => {
       const vars = { copy, style: pr.style || '', price: pr.price || '', imgs_count: (pr.imgs || []).length };
       const fields = {};
 
-      const allKeys = ['title', 'subtitle', 'short', 'tag', 'keywords', 'features'];
+      const allKeys = ['title', 'subtitle', 'short', 'keywords', 'features', 'category'];
       const enabledKeys = allKeys.filter(k => !enabled || enabled[k] !== false);
 
       // Phase 1: fire all enabled fields in parallel
@@ -316,7 +389,7 @@ app.post('/api/ai/process', async (_req, res) => {
   // Collect failed fields
   const failedFields = [];
   results.forEach((res, idx) => {
-    const allKeys = ['title', 'subtitle', 'short', 'tag', 'keywords', 'features'];
+    const allKeys = ['title', 'subtitle', 'short', 'keywords', 'features', 'category'];
     allKeys.forEach(key => {
       if ((!enabled || enabled[key] !== false) && (!res.fields[key] || !res.fields[key].trim())) {
         failedFields.push({ productIndex: idx, field: key });
@@ -410,9 +483,15 @@ app.post('/api/fetch', async (_req, res) => {
       return;
     }
 
+    const fmtTs = ts => {
+      const d = new Date(ts);
+      return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+    };
     const exist = new Set(allItems.map(i => i.goods_id));
     let added = 0;
     for (const item of result.items) {
+      // Use time_stamp as the canonical time field
+      if (item.time_stamp) item.time = fmtTs(item.time_stamp);
       if (!exist.has(item.goods_id)) { allItems.unshift(item); exist.add(item.goods_id); added++; }
     }
     allItems.sort((a, b) => (b.time_stamp || 0) - (a.time_stamp || 0));

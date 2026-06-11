@@ -250,4 +250,19 @@ Node.js · Express · Puppeteer · DeepSeek API · Python · openpyxl
 
 <sub>技术咨询 · 定制开发 · 商务合作</sub>
 
+<br>
+<br>
+
+## ⚠️ 免责声明 Disclaimer
+
+本工具为开源软件，仅供学习研究和技术交流使用。
+
+- 本项目**不提供**任何商品数据。所有数据均由用户自行获取和管理。
+- 用户应确保其获取和使用商品数据的行为**符合相关平台的服务条款**及适用法律法规。
+- 本项目**不隶属于**任何电商平台，亦不代表任何平台的立场或观点。
+- 使用本项目导出的内容所引发的任何纠纷或法律责任，**均由使用者自行承担**。
+- 本项目以 MIT 协议开源，**不提供任何明示或暗示的担保**。
+
+*This is an open-source tool for educational and research purposes only. Users are solely responsible for ensuring compliance with applicable platform terms of service and laws.*
+
 </div>

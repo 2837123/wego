@@ -59,12 +59,13 @@ body{
 }
 .item-card:hover{border-color:#58a6ff;box-shadow:0 4px 12px rgba(88,166,255,.15);transform:translateY(-2px)}
 .item-card.selected{border-color:#238636;box-shadow:0 0 0 2px rgba(35,134,54,.3)}
-.item-card .thumb-wrap{width:100%;background:#0d1117;overflow:hidden}
-.item-card .thumb{width:100%;display:block;min-height:150px;object-fit:cover}
+.item-card .thumb-wrap{width:100%;height:180px;background:#0d1117;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.item-card .thumb{width:100%;height:180px;display:block;object-fit:cover}
 .item-card .no-img{width:100%;height:180px;display:flex;align-items:center;justify-content:center;color:#30363d;font-size:36px;background:#0d1117}
-.item-card .info{padding:10px 12px}
-.item-card .title{color:#c9d1d9;font-size:12px;line-height:1.4;max-height:34px;overflow:hidden;margin-bottom:6px}
-.item-card .meta{color:#8b949e;font-size:11px;display:flex;justify-content:space-between}
+.item-card .info{padding:8px 10px;height:68px;display:flex;flex-direction:column;justify-content:space-between}
+.item-card .title{color:#c9d1d9;font-size:12px;line-height:1.4;max-height:34px;overflow:hidden}
+.item-card .meta{color:#8b949e;font-size:11px;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.item-card .meta-time{color:#8b949e;margin-left:auto;flex-shrink:0}
 .item-card .check{
   position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:6px;
   background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;
@@ -75,6 +76,12 @@ body{
   position:absolute;top:8px;left:8px;padding:3px 7px;border-radius:6px;
   background:rgba(0,0,0,.6);color:#d2991d;font-size:11px;font-weight:700;backdrop-filter:blur(4px);
 }
+.item-card .tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;flex-shrink:0}
+.tag-main{background:#238636;color:#fff}
+.tag-detail{background:#1f6feb;color:#fff}
+.tag-size{background:#d2991d;color:#000}
+.tag-model{background:#6e7681;color:#fff}
+.tag-set{background:#d2991d;color:#000}
 .item-card .saved-mark{
   position:absolute;bottom:40px;right:8px;width:22px;height:22px;border-radius:11px;
   background:#238636;color:#fff;display:flex;align-items:center;justify-content:center;
@@ -109,6 +116,11 @@ input[type=text],textarea{
 }
 input[type=text]:focus,textarea:focus{border-color:#58a6ff}
 textarea{min-height:80px;line-height:1.5}
+
+/* Smart select floating button */
+#smartBtn{position:fixed;z-index:9999;padding:6px 14px;background:#238636;color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:none;white-space:nowrap}
+#smartBtn:hover{background:#2ea043}
+#smartBtn.show{display:block}
 
 /* Saved products */
 .prod-list{max-height:280px;overflow-y:auto}
@@ -174,6 +186,11 @@ textarea{min-height:80px;line-height:1.5}
     <option value="1" selected>有图片</option>
     <option value="2">无图片</option>
   </select>
+  <select id="setFilter">
+    <option value="0">全部类型</option>
+    <option value="1">单品</option>
+    <option value="2">套装</option>
+  </select>
   <span id="stats">加载中...</span>
   <span id="mergeStatus"></span>
   <button id="btnDeselect">取消全选</button>
@@ -229,7 +246,10 @@ textarea{min-height:80px;line-height:1.5}
     <div class="tab-content" id="tab-ai">
       <div class="section">
         <label>API Key</label>
-        <input type="password" id="aiKey" placeholder="sk-..." />
+        <div style="display:flex;gap:6px">
+          <input type="password" id="aiKey" placeholder="sk-..." autocomplete="off" style="flex:1" />
+          <button id="btnAiKeyEdit" style="display:none;background:#30363d;color:#c9d1d9;border:1px solid #484f58;border-radius:4px;padding:0 10px;cursor:pointer;font-size:12px">编辑</button>
+        </div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <select id="aiModel" style="flex:1">
             <option value="deepseek-v4-flash">deepseek-v4-flash</option>
@@ -246,10 +266,10 @@ textarea{min-height:80px;line-height:1.5}
         <label style="color:#58a6ff">AI 提示词模板</label>
         <p style="font-size:10px;color:#8b949e;margin-bottom:8px">变量: {copy}=文案, {style}=款号, {price}=价格, {imgs_count}=图片数</p>
       </div>
-      <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="title" checked /> 商品名称</label><textarea id="aiPrompt_title" rows="2">根据以下商品文案，生成一个简洁的商品标题（含款号{style}），不超过50字：\n{copy}</textarea></div>
+      <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="title" checked /> 商品名称</label><textarea id="aiPrompt_title" rows="2">根据以下商品文案，生成一个简洁的商品标题（不含款号，款号会自动添加），不超过50字：\n{copy}</textarea></div>
       <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="subtitle" checked /> 副标题</label><textarea id="aiPrompt_subtitle" rows="2">根据商品信息提取副标题（卖点提炼），不超过25字：\n{copy}</textarea></div>
       <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="short" checked /> 短标题</label><textarea id="aiPrompt_short" rows="2">提取极简短标题（核心品类词），不超过15字：\n{copy}</textarea></div>
-      <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="tag" checked /> 标题标签</label><textarea id="aiPrompt_tag" rows="2">从以下选项中选择最合适的标签（1-2个）：人气爆款、镇店之宝、新品上市、限时特惠、清仓特价。只输出标签名。\n{copy}</textarea></div>
+      <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="category" checked /> 商品分类</label><textarea id="aiPrompt_category" rows="2">根据以下商品文案，从以下分类中选择最合适的一个，只输出分类名：\n衬衫、工装裤、西装/西裤、马甲吊带、打底衫、毛衣/针织、外套/大衣、T恤、卫衣、牛仔裤、休闲裤、短裤、连衣裙、短裙、长裙\n\n{copy}</textarea></div>
       <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="keywords" checked /> 搜索关键词</label><textarea id="aiPrompt_keywords" rows="2">根据商品文案提取搜索关键词，用英文分号;分隔，5-8个词，包含品类/风格/季节/版型：\n{copy}</textarea></div>
       <div class="section"><label><input type="checkbox" class="ai-toggle" data-key="features" checked /> 商品特征标签</label><textarea id="aiPrompt_features" rows="2">提取商品特征标签，用英文分号;分隔，如面料、版型、风格等：\n{copy}</textarea></div>
     </div>
@@ -257,6 +277,7 @@ textarea{min-height:80px;line-height:1.5}
 </div>
 
 <div id="toast"></div>
+<button id="smartBtn">智能预选</button>
 
 <script src="builder.js"></script>
 </body>

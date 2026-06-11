@@ -213,9 +213,31 @@ ipcMain.handle('fetch', async () => {
           `);
           win.close();
           if (result.error) { resolve({error: result.error}); return; }
+          const now = new Date();
+          const fmtDate = d => d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+          const convertTime = (t) => {
+            if (!t) return t;
+            const hMatch = t.match(/^(\d+)小时前$/);
+            if (hMatch) {
+              const d = new Date(now.getTime() - parseInt(hMatch[1]) * 3600000);
+              return fmtDate(d);
+            }
+            const mMatch = t.match(/^(\d+)分钟前$/);
+            if (mMatch) {
+              const d = new Date(now.getTime() - parseInt(mMatch[1]) * 60000);
+              return fmtDate(d);
+            }
+            const dMatch = t.match(/^(\d+)天前$/);
+            if (dMatch) {
+              const d = new Date(now.getTime() - parseInt(dMatch[1]) * 86400000);
+              return fmtDate(d);
+            }
+            return t;
+          };
           const exist = new Set(allItems.map(i => i.goods_id));
           let added = 0;
           for (const item of result.items) {
+            if (item.time) item.time = convertTime(item.time);
             if (!exist.has(item.goods_id)) { allItems.unshift(item); exist.add(item.goods_id); added++; }
           }
           allItems.sort((a, b) => (b.time_stamp || 0) - (a.time_stamp || 0));
@@ -336,7 +358,7 @@ ipcMain.handle('ai-process', async (_e, config, products, prompts, enabled) => {
       const vars = { copy, style: pr.style || '', price: pr.price || '', imgs_count: (pr.imgs||[]).length };
       const fields = {};
 
-      const allKeys = ['title', 'subtitle', 'short', 'tag', 'keywords', 'features'];
+      const allKeys = ['title', 'subtitle', 'short', 'keywords', 'features', 'category'];
       const enabledKeys = allKeys.filter(k => !enabled || enabled[k] !== false);
 
       // Phase 1: Fire ALL 8 fields in parallel
@@ -383,7 +405,7 @@ ipcMain.handle('ai-process', async (_e, config, products, prompts, enabled) => {
   // Final validation: collect failed fields for retry
   const failedFields = [];
   results.forEach((res, idx) => {
-    const allKeys = ['title', 'subtitle', 'short', 'tag', 'keywords', 'features'];
+    const allKeys = ['title', 'subtitle', 'short', 'keywords', 'features', 'category'];
     allKeys.forEach(key => {
       if ((!enabled || enabled[key] !== false) && (!res.fields[key] || !res.fields[key].trim())) {
         failedFields.push({ productIndex: idx, field: key });

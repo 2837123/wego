@@ -1,4 +1,5 @@
 import openpyxl, json, sys
+from datetime import datetime
 from openpyxl.utils import get_column_letter
 
 if len(sys.argv) < 3:
@@ -59,14 +60,20 @@ row = 2
 for i, pr in enumerate(products):
     ai = (pr.get('aiFields') or {})
     imgs = pr.get('imgs', []) or []
-    img_str = ''.join(['[' + u + ']' for u in imgs[:5]])       # 商品图片只放前5张
+    PLACEHOLDERS = {
+        'https://img.ai.mskin6.com/377432/image/2026/06/5e4417cd1321365ee1848f9f74f2df98.jpg',
+        'https://img.ai.mskin6.com/377432/image/2026/06/fc689109279b63d039857e45feaa88d8.jpg',
+        'https://img.ai.mskin6.com/377432/image/2026/06/11857144aa6457495444637461fed3aa.jpg',
+    }
+    real_imgs = [u for u in imgs if u not in PLACEHOLDERS]
+    img_str = ''.join(['[' + u + ']' for u in real_imgs[:5]])       # 商品图片只放前5张
     img_str_full = ''.join(['[' + u + ']' for u in imgs])    # 详情放全部
-    first_img = imgs[0] if imgs else ''
+    first_img = real_imgs[0] if real_imgs else ''
     copy = (pr.get('copy', '') or '').replace('\n', ' ').strip()
     style = pr.get('style', '') or ''
     raw_price = pr.get('price', '') or ''
     try:
-        price = float(raw_price) * HARD['price_rate']
+        price = float(raw_price)
         # 划线价 = 原始价格 * 2.3，四舍五入取整，9结尾
         raw_p = float(raw_price)
         line_p = round(raw_p * 2.3)
@@ -81,6 +88,8 @@ for i, pr in enumerate(products):
         title = ''  # explicitly empty if AI returned empty (disabled)
     if not title and ai.get('title') is None:
         title = copy.split('\n')[0].strip()[:200] if copy else ('商品 #' + style)
+    if title:
+        title = str(style) + title
 
     # ---- Col 2: 副标题 ----
     subtitle = (ai.get('subtitle') or '').strip()[:50]
@@ -89,11 +98,7 @@ for i, pr in enumerate(products):
     short = (ai.get('short') or '').strip()[:25]
 
     # ---- Col 4: 标题标签 ----
-    tag = ai.get('tag')
-    if tag is None:
-        tag = '人气爆款'  # not processed by AI, use default
-    else:
-        tag = tag.strip()
+    tag = ''
 
     # ---- Col 5: 商品图片 ----
     # Already in [url][url] format
@@ -122,22 +127,21 @@ for i, pr in enumerate(products):
         features = features.strip()
 
     # ---- Col 8: 商品分类 (一级分类，如 [牛仔裤]) ----
-    category = pr.get('category', '')
-    if not category:
-        category = ai.get('category')
-        if category is None or not category.strip():
-            category = ''
-    # Extract just the subcategory name (remove [女装; prefix)
-    if category:
-        cat = category.replace('[', '').replace(']', '').strip()
-        if ';' in cat:
-            cat = cat.split(';')[-1].strip()
-        category = '[' + cat + ']'
-    else:
-        category = ''
+    # Category from AI only
+    ai_cat = (ai.get('category') or '').strip()
+    category = '[' + ai_cat + ']' if ai_cat else ''
 
     # ---- Hardcoded fields ----
-    grouping = '2026'                     # Col 9 商品分组
+    # Grouping from product's actual time, fallback to now
+    prod_time = pr.get('time', '') or ''
+    try:
+        if prod_time:
+            dt = datetime.strptime(prod_time, '%Y/%m/%d')
+        else:
+            dt = datetime.now()
+    except:
+        dt = datetime.now()
+    grouping = dt.strftime('%y%m')          # Col 9 商品分组 (如 2605)
     support = HARD['support']             # Col 10
     code = style                          # Col 12
     barcode = ''                          # Col 13

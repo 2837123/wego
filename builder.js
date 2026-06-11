@@ -115,6 +115,7 @@ function loadPage(filter) {
   filter.search = $('searchInput').value;
   filter.date = $('dateFilter').value;
   filter.img = $('imgFilter').value;
+  filter.set = $('setFilter').value;
   filter.limit = PAGE;
 
   return api('POST', '/api/page', filter).then(function(r) {
@@ -127,6 +128,13 @@ function loadPage(filter) {
     render(r.items);
     updateStatus();
   });
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
 function render(items) {
@@ -158,12 +166,25 @@ function render(items) {
       : '<div class="thumb-wrap"><div class="no-img">?</div></div>';
 
     var imgCount = (item.imgsSrc || []).length;
+    var orderNum = clickOrder[item.goods_id] || '';
+    var isMain = /#\d{5}/.test(item.title || '') && /新款|大货|现货/.test(item.title || '') && /🛒/.test(item.title || '');
+    var isDetail = /实拍细节图/.test(item.title || '');
+    var isSize = !isMain && /THE NEXT TREND/i.test(item.title || '');
+    var isSep = !isMain && (/——/.test(item.title || '') || /〰️/.test(item.title || ''));
+    var isModel = !isMain && !isDetail && !isSize && !isSep;
+    var isSetItem = item.isSet === true;
+    var tagHTML = '';
+    if (isSetItem) tagHTML += '<span class=\"tag tag-set\">套装</span> ';
+    if (isMain) tagHTML += '<span class=\"tag tag-main\">主款</span>';
+    else if (isDetail) tagHTML += '<span class=\"tag tag-detail\">细节图</span>';
+    else if (isSize) tagHTML += '<span class=\"tag tag-size\">尺码表</span>';
+    else if (isModel) tagHTML += '<span class=\"tag tag-model\">模特图</span>';
     card.innerHTML = imgHTML +
-      '<div class="check">' + (S[item.goods_id] ? '✓' : '') + '</div>' +
+      '<div class="check">' + (S[item.goods_id] ? (orderNum || '✓') : '') + '</div>' +
       (imgCount > 1 ? '<div class="img-badge">' + imgCount + '</div>' : '') +
       (savedIds[item.goods_id] ? '<div class="saved-mark">✓</div>' : '') +
       '<div class="info"><div class="title">' + esc((item.title || '').substring(0, 50)) + '</div>' +
-      '<div class="meta"><span>' + imgCount + '图</span></div></div>';
+      '<div class="meta">' + tagHTML + '<span>' + imgCount + '图</span><span class="meta-time">' + fmtTime(item.time_stamp || item.new_send_time) + '</span></div></div>';
     frag.appendChild(card);
   });
 
@@ -186,25 +207,100 @@ function updateStatus() {
 }
 
 // ---- Selection ----
+var clickOrder = {};
+var clickSeq = 0;
+function renumberOrder() {
+  var ids = Object.keys(clickOrder);
+  ids.sort(function(a, b) { return clickOrder[a] - clickOrder[b]; });
+  ids.forEach(function(id, idx) {
+    clickOrder[id] = idx + 1;
+    var card = document.querySelector('.item-card[data-id="' + id + '"]');
+    if (card) card.querySelector('.check').textContent = idx + 1;
+  });
+  clickSeq = ids.length;
+}
+
 function toggle(item) {
   var id = item.goods_id;
-  if (S[id]) { delete S[id]; delete SC[id]; }
-  else { S[id] = true; SC[id] = item; }
+  if (S[id]) {
+    delete S[id]; delete SC[id];
+    delete clickOrder[id];
+  } else {
+    S[id] = true; SC[id] = item;
+    clickSeq++;
+    clickOrder[id] = clickSeq;
+  }
 
   var card = document.querySelector('.item-card[data-id="' + id + '"]');
   if (card) {
     card.classList.toggle('selected', !!S[id]);
-    card.querySelector('.check').textContent = S[id] ? '✓' : '';
+    if (S[id]) {
+      card.querySelector('.check').textContent = clickOrder[id];
+    } else {
+      card.querySelector('.check').textContent = '';
+      renumberOrder();
+    }
   }
+  var selItems = Object.values(SC);
+  if (selItems.length === 1 && isMainPost(selItems[0])) { showSmartBtn(); }
+  else { hideSmartBtn(); }
+
   updateStatus();
   autoMerge();
 }
 
 $('btnDeselect').onclick = function() {
   S = {}; SC = {};
+  clickOrder = {}; clickSeq = 0;
   document.querySelectorAll('.item-card').forEach(function(c) { c.classList.remove('selected'); c.querySelector('.check').textContent = ''; });
+  hideSmartBtn();
   updateStatus();
   autoMerge();
+};
+
+// ---- Smart pre-select ----
+var mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', function(e) { mouseX = e.clientX; mouseY = e.clientY; });
+
+function showSmartBtn() {
+  var btn = $('smartBtn');
+  btn.classList.add('show');
+  btn.style.left = (mouseX + 16) + 'px';
+  btn.style.top = (mouseY - 20) + 'px';
+}
+function hideSmartBtn() { $('smartBtn').classList.remove('show'); }
+
+function isMainPost(item) {
+  var t = item.title || '';
+  return /#\d{5}/.test(t) && /新款|大货|现货/.test(t) && /🛒/.test(t);
+}
+
+$('smartBtn').onclick = function(e) {
+  e.stopPropagation();
+  e.preventDefault();
+  var items = Object.values(SC);
+  if (items.length !== 1) return;
+  var refId = items[0].goods_id;
+  hideSmartBtn();
+  api('GET', '/api/smart-select/' + refId).then(function(data) {
+    var related = data.items || [];
+    if (!related.length) { toast('未找到相关素材', 'err'); return; }
+    related.forEach(function(item) {
+      if (S[item.goods_id]) return;
+      S[item.goods_id] = true;
+      SC[item.goods_id] = item;
+      clickSeq++;
+      clickOrder[item.goods_id] = clickSeq;
+      var card = document.querySelector('.item-card[data-id=\"' + item.goods_id + '\"]');
+      if (card) {
+        card.classList.add('selected');
+        card.querySelector('.check').textContent = clickOrder[item.goods_id];
+      }
+    });
+    renumberOrder();
+    updateStatus();
+    autoMerge();
+  });
 };
 
 // ---- Filters ----
@@ -212,6 +308,7 @@ var ft;
 $('searchInput').oninput = function() { clearTimeout(ft); ft = setTimeout(function() { loadPage({ offset: 0 }); }, 300); };
 $('dateFilter').onchange = function() { loadPage({ offset: 0 }); };
 $('imgFilter').onchange = function() { loadPage({ offset: 0 }); };
+$('setFilter').onchange = function() { loadPage({ offset: 0 }); };
 
 // ---- Work state auto-save (debounced) ----
 var saveStateTimer;
@@ -234,24 +331,62 @@ function scheduleStateSave() {
 function autoMerge() {
   scheduleStateSave();
 
+  var IMG_A = 'https://img.ai.mskin6.com/377432/image/2026/06/5e4417cd1321365ee1848f9f74f2df98.jpg';
+  var IMG_B = 'https://img.ai.mskin6.com/377432/image/2026/06/fc689109279b63d039857e45feaa88d8.jpg';
+  var IMG_C = 'https://img.ai.mskin6.com/377432/image/2026/06/11857144aa6457495444637461fed3aa.jpg';
+
   var items = Object.values(SC);
+  var titles = [];
+
+  // Always start with IMG_A pre-inserted
+  var imgs = [IMG_A];
+  var seen = {}; seen[IMG_A] = true;
+
   if (!items.length) {
-    CP = null;
-    clearBuilder();
+    CP = { imgs: imgs.slice(), style: '', price: '', copy: '', category: '[女装]', detail: '', allStyles: [], allPrices: [] };
+    $('selCount').textContent = '(选中0条 1图)';
+    renderBuilder();
     $('mergeStatus').textContent = '';
-    $('selCount').textContent = '(选中0条)';
     return;
   }
 
-  // Collect images in selection order, deduplicate
-  var imgs = [];
-  var titles = [];
-  items.forEach(function(item) {
-    (item.imgsSrc || []).forEach(function(img) {
-      if (imgs.indexOf(img) < 0) imgs.push(img);
-    });
+  // Process all items
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var itemImgs = item.imgsSrc || [];
     if (item.title) titles.push(item.title);
-  });
+
+    var isLast = (i === items.length - 1);
+    if (isLast && itemImgs.length >= 2) {
+      // Last item with 2+ images: move first image before IMG_B
+      var firstImg = itemImgs[0];
+      var restImgs = itemImgs.slice(1);
+      if (!seen[firstImg]) {
+        var posB = imgs.indexOf(IMG_B);
+        if (posB >= 0) {
+          imgs.splice(posB, 0, firstImg);
+        } else {
+          imgs.push(firstImg);
+        }
+        seen[firstImg] = true;
+      }
+      restImgs.forEach(function(img) {
+        if (!seen[img]) { imgs.push(img); seen[img] = true; }
+      });
+    } else {
+      itemImgs.forEach(function(img) {
+        if (!seen[img]) { imgs.push(img); seen[img] = true; }
+      });
+    }
+
+    // After last model item (index 2), insert IMG_B
+    if (i === 2) { imgs.push(IMG_B); seen[IMG_B] = true; }
+    // After the LAST detail photo, insert IMG_C
+    var isDetail = /实拍细节图/.test(item.title || '');
+    var nextItem = items[i + 1];
+    var nextIsDetail = nextItem && /实拍细节图/.test(nextItem.title || '');
+    if (isDetail && !nextIsDetail) { imgs.push(IMG_C); seen[IMG_C] = true; }
+  }
 
   // Auto-extract style numbers: ALL 5-digit #XXXXX patterns
   var allStyles = [];
@@ -412,11 +547,13 @@ function doSave() {
     copy: CP.copy,
     category: CP.category || '[女装]',
     detail: CP.detail || '',
-    sourceIds: Object.keys(S)
+    sourceIds: Object.keys(S),
+    time: (Object.values(SC)[0] || {}).time || ''
   });
   persistProducts();
   api('POST', '/api/log', { action: 'product-saved', detail: '#' + CP.style + ' ' + CP.imgs.length + '图 ¥' + CP.price });
   S = {}; SC = {}; CP = null;
+  clickOrder = {}; clickSeq = 0;
   document.querySelectorAll('.item-card').forEach(function(c) { c.classList.remove('selected'); c.querySelector('.check').textContent = ''; });
   clearBuilder(); updateStatus(); renderSaved();
   rebuildSavedIds();
@@ -445,9 +582,10 @@ function renderSaved() {
   list.innerHTML = P.map(function(p, i) {
     var thumb = (p.imgs && p.imgs[0]) ? '<img class="prod-thumb" src="' + esc(p.imgs[0]) + '" />' : '<div class="prod-thumb" style="display:flex;align-items:center;justify-content:center;color:#555">?</div>';
     var firstLine = (p.copy || '').split('\n')[0].substring(0, 30);
+    var isSet = (p.style || '').indexOf(',') >= 0;
     return '<div class="prod-item" onclick="editProduct(' + i + ')">' + thumb +
       '<div class="prod-info"><strong>#' + esc(p.style || '?') + ' ¥' + (p.price||'-') + '</strong>' +
-      '<span>' + (p.imgs||[]).length + '图 | ' + esc(firstLine) + '</span></div>' +
+      '<span>' + (p.imgs||[]).length + '图 | ' + esc(firstLine) + (isSet ? ' <b style=\"color:#d2991d;font-size:10px\">套装</b>' : '') + '</span></div>' +
       '<button style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:14px;flex-shrink:0" onclick="event.stopPropagation();removeProduct('+i+')">✕</button></div>';
   }).join('');
 }
@@ -480,12 +618,47 @@ $('btnAiProcess').onclick = function() {
   // Collect prompts and enabled state
   var prompts = {};
   var enabled = {};
-  ['title','subtitle','short','tag','keywords','features'].forEach(function(k) {
+  ['title','subtitle','short','keywords','features','category'].forEach(function(k) {
     var el = $('aiPrompt_' + k);
     prompts[k] = el ? el.value : '';
     var cb = document.querySelector('.ai-toggle[data-key="' + k + '"]');
     enabled[k] = cb ? cb.checked : true;
   });
+
+  // Pre-check: validate empty price/style before AI processing
+  var needFix = [];
+  P.forEach(function(p, idx) {
+    if (!p.style || !p.price) {
+      needFix.push({ index: idx, product: p, missing: !p.style ? '款号' : '价格' });
+    }
+  });
+
+  if (needFix.length) {
+    var msg = '发现 ' + needFix.length + ' 个商品缺少款号或价格，请逐个填写：\n\n';
+    needFix.forEach(function(item) {
+      var field = !item.product.style ? '款号' : '价格';
+      var val = prompt(
+        '商品 #' + (item.index + 1) + ' 缺少' + field + '\n' +
+        '文案预览: ' + ((item.product.copy || '').split('\n')[0] || '').substring(0, 60) + '\n\n' +
+        '请输入' + field + ':',
+        item.product[field === '款号' ? 'style' : 'price'] || ''
+      );
+      if (val && val.trim()) {
+        if (field === '款号') item.product.style = val.trim();
+        else item.product.price = val.trim();
+        persistProducts();
+      }
+    });
+    // Re-check after fixes
+    var stillMissing = P.filter(function(p) { return !p.style || !p.price; });
+    if (stillMissing.length) {
+      toast('仍有 ' + stillMissing.length + ' 个商品缺少信息，请修正后再处理', 'err');
+      renderSaved();
+      return;
+    }
+    toast('信息已修正，继续处理', 'ok');
+    renderSaved();
+  }
 
   // Filter out already-processed products
   var toProcess = P.filter(function(p) { return !processedIds[p.id]; });
@@ -660,6 +833,24 @@ $('btnExport').onclick = function() {
     return Object.assign({}, p, { aiFields: aiById[p.id] || null });
   });
 
+  // Validate: check for empty critical fields
+  var issues = [];
+  exportProds.forEach(function(p, idx) {
+    if (!p.style) issues.push({ index: idx + 1, style: p.style || '?', field: '款号', price: p.price });
+    if (!p.price) issues.push({ index: idx + 1, style: p.style || '?', field: '价格', price: p.price || '-' });
+  });
+
+  if (issues.length) {
+    var msg = '发现 ' + issues.length + ' 个空字段，请修正后再导出：\n\n';
+    issues.slice(0, 15).forEach(function(is) {
+      msg += '  #' + (is.index) + ' 款号=' + is.style + ' ' + is.field + '为空\n';
+    });
+    if (issues.length > 15) msg += '  ... 还有 ' + (issues.length - 15) + ' 个\n';
+    msg += '\n点击商品卡片可编辑款号和价格。';
+    alert(msg);
+    return;
+  }
+
   var exportData = { products: exportProds, hasAI: !!aiResults };
   api('POST', '/api/export', exportData).then(function(r) {
     if (r.error) { toast('失败: ' + r.error, 'err'); return; }
@@ -749,7 +940,7 @@ function setAiDot(ok) {
 api('GET', '/api/ai/config').then(function(json) {
   try {
     var c = JSON.parse(json);
-    if (c.apiKey) { aiConfig.apiKey = c.apiKey; $('aiKey').value = c.apiKey; }
+    if (c.apiKey) { aiConfig.apiKey = c.apiKey; $('aiKey').value = c.apiKey; lockAiKey(); }
     if (c.model) { aiConfig.model = c.model; $('aiModel').value = c.model; }
     if (c.prompts) {
       Object.keys(c.prompts).forEach(function(k) {
@@ -767,10 +958,23 @@ api('GET', '/api/ai/config').then(function(json) {
   } catch(e) {}
 });
 
+function lockAiKey() {
+  $('aiKey').readOnly = true;
+  $('aiKey').style.opacity = '0.6';
+  $('btnAiKeyEdit').style.display = '';
+}
+
+$('btnAiKeyEdit').onclick = function() {
+  $('aiKey').readOnly = false;
+  $('aiKey').style.opacity = '';
+  $('aiKey').focus();
+  $('btnAiKeyEdit').style.display = 'none';
+};
+
 $('btnAiSave').onclick = function() {
   aiConfig.apiKey = $('aiKey').value.trim(); aiConfig.model = $('aiModel').value;
   aiConfig.prompts = {};
-  ['title','subtitle','short','tag','keywords','features'].forEach(function(k) {
+  ['title','subtitle','short','keywords','features','category'].forEach(function(k) {
     var el = $('aiPrompt_' + k);
     if (el) aiConfig.prompts[k] = el.value;
   });
@@ -779,6 +983,7 @@ $('btnAiSave').onclick = function() {
     aiConfig.prompts_enabled[cb.getAttribute('data-key')] = cb.checked;
   });
   api('POST', '/api/ai/config', aiConfig).then(function() {
+    lockAiKey();
     setAiDot(true);
     toast('AI 配置已保存', 'ok');
   });

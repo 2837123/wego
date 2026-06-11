@@ -3,6 +3,7 @@ dist/
 release/
 *.exe
 data/
+all_items.json
 szwego-profile/
 exports/
 ai_config.json
