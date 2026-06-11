@@ -276,6 +276,20 @@ textarea{min-height:80px;line-height:1.5}
   </div>
 </div>
 
+<div id="fixModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;width:420px;max-width:90vw">
+    <div style="font-size:14px;color:#c9d1d9;margin-bottom:4px">修正商品信息 <span id="fixProgress" style="color:#8b949e;font-size:12px"></span></div>
+    <div style="font-size:11px;color:#d2991d;margin-bottom:4px" id="fixField"></div>
+    <div style="font-size:11px;color:#8b949e;margin-bottom:2px">款号: <b id="fixStyle" style="color:#c9d1d9"></b></div>
+    <div style="font-size:11px;color:#8b949e;margin-bottom:12px;max-height:34px;overflow:hidden" id="fixTitle"></div>
+    <input type="text" id="fixInput" style="margin-bottom:12px;font-size:14px;padding:10px" placeholder="请输入..." />
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="fixSkip" style="background:#30363d;color:#c9d1d9;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px">跳过</button>
+      <button id="fixConfirm" style="background:#238636;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">确认并继续</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <button id="smartBtn">智能预选</button>
 

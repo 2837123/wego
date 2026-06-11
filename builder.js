@@ -634,22 +634,16 @@ $('btnAiProcess').onclick = function() {
   });
 
   if (needFix.length) {
-    var msg = '发现 ' + needFix.length + ' 个商品缺少款号或价格，请逐个填写：\n\n';
-    needFix.forEach(function(item) {
-      var field = !item.product.style ? '款号' : '价格';
-      var val = prompt(
-        '商品 #' + (item.index + 1) + ' 缺少' + field + '\n' +
-        '文案预览: ' + ((item.product.copy || '').split('\n')[0] || '').substring(0, 60) + '\n\n' +
-        '请输入' + field + ':',
-        item.product[field === '款号' ? 'style' : 'price'] || ''
-      );
-      if (val && val.trim()) {
-        if (field === '款号') item.product.style = val.trim();
-        else item.product.price = val.trim();
-        persistProducts();
-      }
-    });
-    // Re-check after fixes
+    toast('发现 ' + needFix.length + ' 个商品缺少信息，请逐个修正', 'ok');
+    fixProducts(needFix, 0);
+    return;
+  }
+
+  startAiProcess();
+
+function fixProducts(list, cursor) {
+  if (cursor >= list.length) {
+    // All done, check if still missing
     var stillMissing = P.filter(function(p) { return !p.style || !p.price; });
     if (stillMissing.length) {
       toast('仍有 ' + stillMissing.length + ' 个商品缺少信息，请修正后再处理', 'err');
@@ -658,7 +652,39 @@ $('btnAiProcess').onclick = function() {
     }
     toast('信息已修正，继续处理', 'ok');
     renderSaved();
+    startAiProcess();
+    return;
   }
+
+  var item = list[cursor];
+  var field = item.missing;
+  var p = item.product;
+
+  $('fixProgress').textContent = '(' + (cursor + 1) + '/' + list.length + ')';
+  $('fixField').textContent = '缺少: ' + field;
+  $('fixStyle').textContent = p.style || '未识别';
+  $('fixTitle').textContent = (p.copy || '').split('\n')[0].substring(0, 80);
+  $('fixInput').value = field === '款号' ? (p.style || '') : (p.price || '');
+  $('fixModal').style.display = 'flex';
+  $('fixInput').focus();
+
+  function done() {
+    $('fixModal').style.display = 'none';
+    var val = $('fixInput').value.trim();
+    if (val) {
+      if (field === '款号') p.style = val;
+      else p.price = val;
+      persistProducts();
+    }
+    fixProducts(list, cursor + 1);
+  }
+
+  $('fixConfirm').onclick = done;
+  $('fixSkip').onclick = function() { fixProducts(list, cursor + 1); };
+  $('fixInput').onkeydown = function(e) { if (e.key === 'Enter') done(); };
+}
+
+function startAiProcess() {
 
   // Filter out already-processed products
   var toProcess = P.filter(function(p) { return !processedIds[p.id]; });
@@ -687,7 +713,8 @@ $('btnAiProcess').onclick = function() {
       $('aiProcessStatus').innerHTML = '<span style="color:#f85149">' + e.message + '</span>';
       btn.disabled = false; btn.textContent = 'AI 处理';
     });
-};
+} // end startAiProcess
+}; // end btnAiProcess onclick
 
 // Listen for AI progress via SSE
 (function initAiSSE() {
