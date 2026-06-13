@@ -164,8 +164,7 @@ for i, pr in enumerate(products):
     channel = HARD['channel']             # Col 31
 
     # ---- Col 27: 移动端商品详情 (auto-generated, no AI) ----
-    detail = pr.get('detail', '') or (img_str_full + '\n' + copy.replace('\n', '<br>'))
-    detail = detail[:5000]
+    detail = img_str_full[:5000]
 
     # Write 3 rows per product (S / M / L)
     for size in ['S', 'M', 'L']:
