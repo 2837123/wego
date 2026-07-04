@@ -708,6 +708,8 @@ function startAiProcess() {
         $('aiProcessStatus').innerHTML = '<span style="color:#f85149">启动失败</span>';
         toast('AI 处理启动失败', 'err');
         btn.disabled = false; btn.textContent = 'AI 处理';
+      } else {
+        window._aiJobId = initR.jobId;
       }
     }).catch(function(e) {
       $('aiProcessStatus').innerHTML = '<span style="color:#f85149">' + e.message + '</span>';
@@ -723,11 +725,13 @@ function startAiProcess() {
   es.onmessage = function(e) {
     try {
       var d = JSON.parse(e.data);
+      // 只处理当前任务的进度，避免并发任务互相干扰
+      if (window._aiJobId && d.jobId && d.jobId !== window._aiJobId) return;
       if (d.done) {
         if (window._aiSseDoneReceived) return;
         window._aiSseDoneReceived = true;
         // Fetch final result
-        fetch('/api/ai/result').then(function(r) { return r.json(); }).then(function(r) {
+        fetch('/api/ai/result?jobId=' + encodeURIComponent(window._aiJobId || '')).then(function(r) { return r.json(); }).then(function(r) {
           if (r.ok && r.results) {
             var ctx = window._aiContext;
             var toProcess = ctx ? ctx.products : P;

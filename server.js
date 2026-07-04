@@ -1,8 +1,8 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 const { execFile } = require('child_process');
+const puppeteer = require('puppeteer');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -22,6 +22,29 @@ const SAVED_FILE = path.join(DATA_DIR, 'saved_products.json');
 const STATE_FILE = path.join(DATA_DIR, 'work_state.json');
 const LOG_FILE = path.join(DATA_DIR, 'work_log.json');
 const AI_CONFIG_FILE = path.join(DATA_DIR, 'ai_config.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+// AI 处理常量
+const AI_SYSTEM_STRICT = '你是专业的电商商品数据助手。只输出结果，不解释。输出内容绝对不能为空。';
+const AI_CONCURRENCY = 20;
+const AI_RETRY_DEADLINE_MS = 120000;
+
+// szwego 配置：albumId/shopId 因账号而异，可由 data/config.json 覆盖
+function loadConfig() {
+  const cfg = {
+    albumId: '_dwoY7I0-PgBaikbKPfnkdJxRsJi5naAnTpu9TZA',
+    shopId: '_JY7Y7QN0GBV3Ft6ZJV2GOiQm5ezvLM3vX',
+  };
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      Object.assign(cfg, JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')));
+    }
+  } catch (e) {
+    console.warn('config.json parse failed:', e.message);
+  }
+  return cfg;
+}
+const SZWEGO_CONFIG = loadConfig();
 
 // ── Load data into memory ──────────────────────────────────────────
 let allItems = [];
@@ -64,15 +87,42 @@ function loadData() {
 // ── Helpers ─────────────────────────────────────────────────────────
 function appendLog(action, detail) {
   try {
-    let log = [];
-    if (fs.existsSync(LOG_FILE)) log = JSON.parse(fs.readFileSync(LOG_FILE, 'utf-8'));
-    log.push({ time: new Date().toISOString(), action, detail: detail || '' });
-    if (log.length > 500) log = log.slice(-500);
-    fs.writeFileSync(LOG_FILE, JSON.stringify(log, null, 2), 'utf-8');
+    const entry = JSON.stringify({ time: new Date().toISOString(), action, detail: detail || '' }) + '\n';
+    fs.appendFileSync(LOG_FILE, entry, 'utf-8');
   } catch (e) {}
 }
 
-function readJsonSafe(filePath, fallback) {
+function readLogArray() {
+  try {
+    if (!fs.existsSync(LOG_FILE)) return [];
+    const raw = fs.readFileSync(LOG_FILE, 'utf-8').trim();
+    if (!raw) return [];
+    // 兼容旧 JSON 数组格式
+    if (raw.startsWith('[')) {
+      try { return JSON.parse(raw); } catch { return []; }
+    }
+    return raw.split('\n').slice(-500).map(l => {
+      try { return JSON.parse(l); } catch { return null; }
+    }).filter(Boolean);
+  } catch (e) { return []; }
+}
+
+// 启动时迁移旧 JSON 数组格式 → NDJSON，并截断保留最后 500 条
+function migrateLogIfNeeded() {
+  try {
+    if (!fs.existsSync(LOG_FILE)) return;
+    const raw = fs.readFileSync(LOG_FILE, 'utf-8').trim();
+    if (!raw || !raw.startsWith('[')) return;
+    const arr = JSON.parse(raw);
+    const ndjson = arr.slice(-500).map(e => JSON.stringify(e)).join('\n') + '\n';
+    fs.writeFileSync(LOG_FILE, ndjson, 'utf-8');
+    console.log(`Migrated log: ${arr.length} → ${Math.min(arr.length, 500)} entries (NDJSON)`);
+  } catch (e) {
+    console.warn('Log migration failed:', e.message);
+  }
+}
+
+function readFileSafe(filePath, fallback) {
   try {
     if (fs.existsSync(filePath)) {
       let raw = fs.readFileSync(filePath, 'utf-8');
@@ -92,8 +142,8 @@ app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 // ── REST API Routes ─────────────────────────────────────────────────
 
 // Page: paginated + filtered query
-app.post('/api/page', (_req, res) => {
-  const filter = _req.body || {};
+app.post('/api/page', (req, res) => {
+  const filter = req.body || {};
   const search = (filter.search || '').toLowerCase();
   const date = filter.date || '';
   const imgMode = filter.img || '0';
@@ -171,34 +221,34 @@ app.get('/api/smart-select/:goodsId', (req, res) => {
 });
 
 // Saved products
-app.get('/api/saved', (_req, res) => res.send(readJsonSafe(SAVED_FILE, '[]')));
-app.post('/api/saved', (_req, res) => {
+app.get('/api/saved', (_req, res) => res.send(readFileSafe(SAVED_FILE, '[]')));
+app.post('/api/saved', (req, res) => {
   try {
-    fs.writeFileSync(SAVED_FILE, JSON.stringify(_req.body), 'utf-8');
+    fs.writeFileSync(SAVED_FILE, JSON.stringify(req.body), 'utf-8');
     res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // Work state
-app.get('/api/state', (_req, res) => res.send(readJsonSafe(STATE_FILE, '{}')));
-app.post('/api/state', (_req, res) => {
+app.get('/api/state', (_req, res) => res.send(readFileSafe(STATE_FILE, '{}')));
+app.post('/api/state', (req, res) => {
   try {
-    fs.writeFileSync(STATE_FILE, typeof _req.body === 'string' ? _req.body : JSON.stringify(_req.body), 'utf-8');
+    fs.writeFileSync(STATE_FILE, typeof req.body === 'string' ? req.body : JSON.stringify(req.body), 'utf-8');
     res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // Work log
-app.get('/api/log', (_req, res) => res.send(readJsonSafe(LOG_FILE, '[]')));
-app.post('/api/log', (_req, res) => {
-  appendLog(_req.body.action, _req.body.detail);
+app.get('/api/log', (_req, res) => res.send(JSON.stringify(readLogArray())));
+app.post('/api/log', (req, res) => {
+  appendLog(req.body.action, req.body.detail);
   res.json({ ok: true });
 });
 
 // Export Excel
-app.post('/api/export', async (_req, res) => {
+app.post('/api/export', async (req, res) => {
   try {
-    const products = _req.body;
+    const products = req.body;
     const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const outPath = path.join(EXPORT_DIR, `products_${ts}.xlsx`);
     const dataPath = path.join(EXPORT_DIR, '_export_data.json');
@@ -219,80 +269,64 @@ app.post('/api/export', async (_req, res) => {
 });
 
 // Download exported file
-app.get('/api/download', (_req, res) => {
-  const fp = _req.query.file;
+app.get('/api/download', (req, res) => {
+  const fp = req.query.file;
   if (!fp || !fp.startsWith(EXPORT_DIR)) return res.status(403).send('Forbidden');
   if (!fs.existsSync(fp)) return res.status(404).send('Not found');
   res.download(fp);
 });
 
 // ── AI / DeepSeek API ───────────────────────────────────────────────
-function callAi(apiKey, model, maxTokens, systemPrompt, userMessage) {
-  return new Promise(resolve => {
-    if (!userMessage || !userMessage.trim()) {
-      resolve({ ok: false, error: 'empty prompt' });
-      return;
-    }
-    const body = JSON.stringify({
-      model: model || 'deepseek-v4-flash',
-      messages: [
-        { role: 'system', content: systemPrompt || '你是电商商品数据助手。' },
-        { role: 'user', content: userMessage }
-      ],
-      max_tokens: maxTokens || 4096,
-      temperature: 0.3,
-    });
-
-    const req = https.request({
-      hostname: 'api.deepseek.com', path: '/v1/chat/completions', method: 'POST',
+async function callAi(apiKey, model, maxTokens, systemPrompt, userMessage) {
+  if (!userMessage || !userMessage.trim()) return { ok: false, error: 'empty prompt' };
+  try {
+    const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + (apiKey || ''),
         'User-Agent': 'SzwegoScraper/2.0',
       },
-      timeout: 30000,
-    }, resp => {
-      let data = '';
-      resp.on('data', c => data += c);
-      resp.on('end', () => {
-        try {
-          const j = JSON.parse(data);
-          if (j.choices && j.choices[0]) {
-            const content = (j.choices[0].message.content || '').trim();
-            resolve({ ok: true, reply: content });
-          } else {
-            resolve({ ok: false, error: (j.error || {}).message || 'API error' });
-          }
-        } catch (e) {
-          resolve({ ok: false, error: 'parse error' });
-        }
-      });
+      body: JSON.stringify({
+        model: model || 'deepseek-v4-flash',
+        messages: [
+          { role: 'system', content: systemPrompt || '你是电商商品数据助手。' },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: maxTokens || 4096,
+        temperature: 0.3,
+      }),
+      signal: AbortSignal.timeout(30000),
     });
-    req.on('error', e => resolve({ ok: false, error: e.message }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
-    req.write(body); req.end();
-  });
+    const j = await resp.json();
+    if (j.choices && j.choices[0]) {
+      return { ok: true, reply: (j.choices[0].message.content || '').trim() };
+    }
+    return { ok: false, error: (j.error || {}).message || 'API error' };
+  } catch (e) {
+    return { ok: false, error: e.name === 'TimeoutError' ? 'timeout' : e.message };
+  }
 }
 
 // AI config
-app.get('/api/ai/config', (_req, res) => res.send(readJsonSafe(AI_CONFIG_FILE, '{}')));
-app.post('/api/ai/config', (_req, res) => {
+app.get('/api/ai/config', (_req, res) => res.send(readFileSafe(AI_CONFIG_FILE, '{}')));
+app.post('/api/ai/config', (req, res) => {
   try {
-    fs.writeFileSync(AI_CONFIG_FILE, JSON.stringify(_req.body, null, 2), 'utf-8');
+    fs.writeFileSync(AI_CONFIG_FILE, JSON.stringify(req.body, null, 2), 'utf-8');
     res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // AI test connection
-app.post('/api/ai/test', async (_req, res) => {
-  const result = await callAi(_req.body.apiKey, _req.body.model, 50,
+app.post('/api/ai/test', async (req, res) => {
+  const result = await callAi(req.body.apiKey, req.body.model, 50,
     '', '你好，请回复"连接成功"两个字');
   res.json(result);
 });
 
 // AI chat
-app.post('/api/ai/chat', async (_req, res) => {
-  const { config, messages } = _req.body;
+app.post('/api/ai/chat', async (req, res) => {
+  const { config, messages } = req.body;
   const result = await callAi(config.apiKey, config.model, config.maxTokens || 2000,
     '', messages);
   res.json(result);
@@ -300,14 +334,16 @@ app.post('/api/ai/chat', async (_req, res) => {
 
 // SSE clients for AI progress
 let aiProgressClients = [];
-app.get('/api/ai/progress', (_req, res) => {
+let lastAiResult = null;  // { results, failed, jobId }
+
+app.get('/api/ai/progress', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
   });
   aiProgressClients.push(res);
-  _req.on('close', () => { aiProgressClients = aiProgressClients.filter(c => c !== res); });
+  req.on('close', () => { aiProgressClients = aiProgressClients.filter(c => c !== res); });
 });
 
 function sendAiProgress(data) {
@@ -315,16 +351,12 @@ function sendAiProgress(data) {
 }
 
 // ── AI Process ──────────────────────────────────────────────────────
-app.post('/api/ai/process', async (_req, res) => {
-  const { config, products, prompts, enabled } = _req.body;
+app.post('/api/ai/process', async (req, res) => {
+  const { config, products, prompts, enabled } = req.body;
+  const jobId = String(Date.now()) + Math.random().toString(36).slice(2, 8);
 
   // Start processing and stream progress via SSE
-  res.json({ ok: true, message: 'processing started' });
-
-  // Process in background
-  const SYSTEM_STRICT = '你是专业的电商商品数据助手。只输出结果，不解释。输出内容绝对不能为空。';
-  const CONCURRENCY = 20;
-  const RETRY_DEADLINE_MS = 120000;
+  res.json({ ok: true, message: 'processing started', jobId });
 
   function fillTpl(tpl, vars) {
     let s = tpl || '';
@@ -335,7 +367,7 @@ app.post('/api/ai/process', async (_req, res) => {
   const results = new Array(products.length);
 
   async function callField(promptText) {
-    const r = await callAi(config.apiKey, config.model, config.maxTokens, SYSTEM_STRICT, promptText);
+    const r = await callAi(config.apiKey, config.model, config.maxTokens, AI_SYSTEM_STRICT, promptText);
     return (r.ok && r.reply && r.reply.trim()) ? r.reply.trim() : null;
   }
 
@@ -348,8 +380,8 @@ app.post('/api/ai/process', async (_req, res) => {
     return null;
   }
 
-  for (let batch = 0; batch < products.length; batch += CONCURRENCY) {
-    const batchProducts = products.slice(batch, batch + CONCURRENCY);
+  for (let batch = 0; batch < products.length; batch += AI_CONCURRENCY) {
+    const batchProducts = products.slice(batch, batch + AI_CONCURRENCY);
     await Promise.all(batchProducts.map(async (pr) => {
       const i = products.indexOf(pr);
       const copy = (pr.copy || '').substring(0, 3000);
@@ -371,7 +403,7 @@ app.post('/api/ai/process', async (_req, res) => {
       // Phase 2: retry failed fields for up to 2 min
       const failedKeys = firstResults.filter(f => !f.result).map(f => f.key);
       if (failedKeys.length > 0) {
-        const deadline = Date.now() + RETRY_DEADLINE_MS;
+        const deadline = Date.now() + AI_RETRY_DEADLINE_MS;
         const retryResults = await Promise.all(failedKeys.map(async (key) => {
           const tpl = prompts[key];
           if (!tpl) return { key, result: '' };
@@ -382,7 +414,7 @@ app.post('/api/ai/process', async (_req, res) => {
       }
 
       results[i] = { index: i, fields, _pid: pr.id };
-      sendAiProgress({ index: results.filter(r => r).length, total: products.length });
+      sendAiProgress({ index: results.filter(r => r).length, total: products.length, jobId });
     }));
   }
 
@@ -401,40 +433,28 @@ app.post('/api/ai/process', async (_req, res) => {
     console.log(`WARNING: ${failedFields.length} empty fields: ${JSON.stringify(failedFields.slice(0, 10))}`);
   }
 
-  // Store the last result so frontend can pick it up
-  global._lastAiResult = { results, failed: failedFields.length ? failedFields : null };
+  lastAiResult = { results, failed: failedFields.length ? failedFields : null, jobId };
 
-  sendAiProgress({ index: results.length, total: products.length, done: true, failed: failedFields.length ? failedFields : null });
+  sendAiProgress({ index: results.length, total: products.length, done: true, failed: failedFields.length ? failedFields : null, jobId });
 });
 
 // Endpoint for frontend to poll AI result after processing completes
-app.get('/api/ai/result', (_req, res) => {
-  const r = global._lastAiResult;
-  res.json(r ? { ok: true, results: r.results, failed: r.failed } : { ok: false, error: 'no result' });
+app.get('/api/ai/result', (req, res) => {
+  const jobId = req.query.jobId;
+  if (!lastAiResult || (jobId && lastAiResult.jobId !== jobId)) {
+    res.json({ ok: false, error: 'no result or jobId mismatch' });
+    return;
+  }
+  res.json({ ok: true, results: lastAiResult.results, failed: lastAiResult.failed });
 });
 
 // ── Puppeteer: Fetch fresh data ─────────────────────────────────────
-async function getPuppeteer() {
-  try {
-    return require('puppeteer');
-  } catch (e) {
-    return null;
-  }
-}
-
 app.post('/api/fetch', async (_req, res) => {
-  const puppeteer = await getPuppeteer();
-  if (!puppeteer) {
-    res.json({ error: 'Puppeteer 未安装。运行: npm install puppeteer' });
-    return;
-  }
-
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 86400000);
   const fmt = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const sd = fmt(monthAgo), ed = fmt(today);
-  const albumId = '_dwoY7I0-PgBaikbKPfnkdJxRsJi5naAnTpu9TZA';
-  const shopId = '_JY7Y7QN0GBV3Ft6ZJV2GOiQm5ezvLM3vX';
+  const { albumId, shopId } = SZWEGO_CONFIG;
 
   console.log('Fetching szwego data via Puppeteer...');
   try {
@@ -488,16 +508,20 @@ app.post('/api/fetch', async (_req, res) => {
       return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
     };
     const exist = new Set(allItems.map(i => i.goods_id));
-    let added = 0;
+    const newItems = [];
     for (const item of result.items) {
       // Use time_stamp as the canonical time field
       if (item.time_stamp) item.time = fmtTs(item.time_stamp);
-      if (!exist.has(item.goods_id)) { allItems.unshift(item); exist.add(item.goods_id); added++; }
+      if (!exist.has(item.goods_id)) { newItems.push(item); exist.add(item.goods_id); }
     }
-    allItems.sort((a, b) => (b.time_stamp || 0) - (a.time_stamp || 0));
+    if (newItems.length) {
+      // 合并后整体排序一次，避免 unshift 的 O(n²)
+      allItems = newItems.concat(allItems);
+      allItems.sort((a, b) => (b.time_stamp || 0) - (a.time_stamp || 0));
+    }
     fs.writeFileSync(DATA_FILE_WRITE, JSON.stringify(allItems), 'utf-8');
-    console.log(`Fetched: ${added} new items`);
-    res.json({ ok: true, count: added });
+    console.log(`Fetched: ${newItems.length} new items`);
+    res.json({ ok: true, count: newItems.length });
   } catch (e) {
     console.error('Fetch error:', e);
     res.json({ error: e.message });
@@ -506,14 +530,14 @@ app.post('/api/fetch', async (_req, res) => {
 
 // ── Puppeteer: Login ───────────────────────────────────────────────
 let loginSseClients = [];
-app.get('/api/login/status', (_req, res) => {
+app.get('/api/login/status', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
   });
   loginSseClients.push(res);
-  _req.on('close', () => { loginSseClients = loginSseClients.filter(c => c !== res); });
+  req.on('close', () => { loginSseClients = loginSseClients.filter(c => c !== res); });
 });
 
 function notifyLoginClients(payload) {
@@ -521,12 +545,6 @@ function notifyLoginClients(payload) {
 }
 
 app.post('/api/login', async (_req, res) => {
-  const puppeteer = await getPuppeteer();
-  if (!puppeteer) {
-    res.json({ error: 'Puppeteer 未安装' });
-    return;
-  }
-
   let browser = null;
   let checkInterval = null;
   let settled = false;
@@ -603,6 +621,7 @@ app.post('/api/login', async (_req, res) => {
 
 // ── Start server ────────────────────────────────────────────────────
 loadData();
+migrateLogIfNeeded();
 app.listen(PORT, () => {
   console.log(`商品组装器已启动: http://localhost:${PORT}`);
   appendLog('server-started', `端口 ${PORT}`);
