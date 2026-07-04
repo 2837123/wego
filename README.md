@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/WeGo_Product_Builder-v1.0.1-000000?style=for-the-badge&logo=windowsterminal&logoColor=white" alt="WeGo">
+<img src="https://img.shields.io/badge/WeGo_Product_Builder-v1.0.0-000000?style=for-the-badge&logo=windowsterminal&logoColor=white" alt="WeGo">
 
 <img src="https://img.shields.io/badge/Node.js-22%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="node">
 <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="python">
@@ -194,12 +194,11 @@ npm start
 硬编码项极少且高度集中，适配新平台只需改 **一处文件** 的 **几个常量**。
 
 ```yaml
-数据源: server.js:363-364   # albumId / shopId
-API:    server.js:374,384   # szwego.com → 你的域名
-登录:   server.js:458-468   # 扫码 → 账号密码 / Token
-AI:     server.js:174       # DeepSeek → OpenAI / 其他
-导出:   export_template.py  # 31 列 → 你的模板
-端口:   server.js:7         # 3000 → 自定义
+数据源: data/config.json         # albumId / shopId（默认值在 server.js loadConfig）
+AI:     server.js callAi()       # DeepSeek hostname/model → OpenAI / 其他
+登录:   server.js /api/login     # 扫码登录（puppeteer + cookie 持久化）
+导出:   export_template.py       # 31 列模板 → 你的模板
+端口:   PORT 环境变量            # 默认 3000
 ```
 
 > 📖 完整指南 → **[DEVELOPMENT.md](DEVELOPMENT.md)**
@@ -217,7 +216,7 @@ AI:     server.js:174       # DeepSeek → OpenAI / 其他
 <details>
 <summary>AI 填充失败？</summary>
 
-检查 API Key 有效 + 余额充足。超时可调 `server.js:180`。
+检查 API Key 有效 + 余额充足。超时可调 `callAi()` 里的 `AbortSignal.timeout(30000)`。
 </details>
 
 <details>
@@ -231,6 +230,34 @@ AI:     server.js:174       # DeepSeek → OpenAI / 其他
 
 `rm -rf szwego-profile/` 后重启。
 </details>
+
+---
+
+## 更新日志
+
+### v1.0.0 正式版
+
+**架构清理**
+- 移除 Electron 时代死代码（`main.js` / `preload.js` / `export_excel.py`）
+- 移除开发期产物（`captured_apis.json` / `szwego_export.xlsx`）
+- `readJsonSafe` → `readFileSafe`（命名与行为一致）
+- 删除 `getPuppeteer` try-require 保护，直接 `require('puppeteer')`
+- `_req` → `req`（仅在使用 body/query/on 的路由，避免命名误导）
+
+**AI 流程加固**
+- `global._lastAiResult` → 模块级 `lastAiResult` + `jobId` 校验，防并发覆盖
+- 前端 SSE 携带 `jobId`，仅处理当前任务的进度消息
+- `callAi`：手写 `https.request` → 原生 `fetch`（30 行 → 15 行）
+- 常量 `AI_SYSTEM_STRICT` / `AI_CONCURRENCY` / `AI_RETRY_DEADLINE_MS` 提到模块顶层
+
+**性能与可靠性**
+- `/api/fetch` 合并：`unshift` O(n²) → `concat + sort` 单次排序
+- `appendLog` 改 `fs.appendFileSync`（O(1) 写入）+ NDJSON 格式，启动时自动迁移旧 JSON 数组
+- 重新登录修复：清失效 cookie 避免登录页显示"已失效"+ 监听 `browser.disconnected` 即时通知前端
+- 刷新数据时间窗：7 天 → 30 天
+
+**配置**
+- `albumId` / `shopId` 抽离到 `data/config.json`（默认值兜底）
 
 ---
 
