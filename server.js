@@ -430,9 +430,9 @@ app.post('/api/fetch', async (_req, res) => {
   }
 
   const today = new Date();
-  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+  const monthAgo = new Date(today.getTime() - 30 * 86400000);
   const fmt = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  const sd = fmt(weekAgo), ed = fmt(today);
+  const sd = fmt(monthAgo), ed = fmt(today);
   const albumId = '_dwoY7I0-PgBaikbKPfnkdJxRsJi5naAnTpu9TZA';
   const shopId = '_JY7Y7QN0GBV3Ft6ZJV2GOiQm5ezvLM3vX';
 
@@ -516,8 +516,8 @@ app.get('/api/login/status', (_req, res) => {
   _req.on('close', () => { loginSseClients = loginSseClients.filter(c => c !== res); });
 });
 
-function notifyLoginDone() {
-  loginSseClients.forEach(c => c.write('data: {"done":true}\n\n'));
+function notifyLoginClients(payload) {
+  loginSseClients.forEach(c => c.write(`data: ${JSON.stringify(payload)}\n\n`));
 }
 
 app.post('/api/login', async (_req, res) => {
@@ -527,8 +527,23 @@ app.post('/api/login', async (_req, res) => {
     return;
   }
 
+  let browser = null;
+  let checkInterval = null;
+  let settled = false;
+
+  const finish = async (payload) => {
+    if (settled) return;
+    settled = true;
+    if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
+    notifyLoginClients(payload);
+    if (browser) {
+      try { await browser.close(); } catch (_) {}
+      browser = null;
+    }
+  };
+
   try {
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: false,
       userDataDir: PROFILE_DIR,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -536,31 +551,53 @@ app.post('/api/login', async (_req, res) => {
     const page = await browser.newPage();
     await page.goto('https://www.szwego.com/static/index.html', { waitUntil: 'networkidle2', timeout: 30000 });
 
+    // 清掉失效的 szwego cookie，避免登录页带旧 cookie 直接显示"已失效"
+    try {
+      const stale = await page.cookies('https://www.szwego.com');
+      for (const c of stale) {
+        await page.deleteCookie({ name: c.name, domain: c.domain });
+      }
+      if (stale.length) {
+        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        console.log(`Cleared ${stale.length} stale szwego cookies before login`);
+      }
+    } catch (e) {
+      console.warn('Pre-login cookie clear failed:', e.message);
+    }
+
     res.json({ ok: true, message: '请在打开的浏览器窗口中扫码登录' });
+
+    // 用户手动关闭浏览器窗口 → 立即通知前端
+    browser.on('disconnected', () => {
+      finish({ closed: true, reason: 'browser_closed' });
+    });
 
     // Poll for login cookie
     let checkCount = 0;
-    const checkInterval = setInterval(async () => {
+    checkInterval = setInterval(async () => {
       checkCount++;
+      if (settled) return;
       try {
         const cookies = await page.cookies();
         const tokenCookie = cookies.find(c => c.name === 'token' && c.domain === 'www.szwego.com');
         if (tokenCookie && tokenCookie.value) {
-          clearInterval(checkInterval);
-          notifyLoginDone();
-          await browser.close();
           console.log('Login detected, cookie saved');
+          await finish({ done: true });
+          return;
         }
-      } catch (e) {}
+      } catch (e) {
+        // page 调用失败一般是浏览器正在关闭，disconnected 事件会处理通知
+        return;
+      }
       if (checkCount > 100) {
-        clearInterval(checkInterval);
-        await browser.close();
         console.log('Login timeout after 5 min');
+        await finish({ closed: true, reason: 'timeout' });
       }
     }, 3000);
   } catch (e) {
     console.error('Login error:', e);
     try { res.json({ error: '浏览器启动失败: ' + e.message }); } catch (_) {}
+    await finish({ closed: true, reason: 'launch_failed' });
   }
 });
 

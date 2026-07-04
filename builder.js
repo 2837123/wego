@@ -930,6 +930,15 @@ $('btnLogin').onclick = function() {
         toast('登录成功！Cookie 已更新', 'ok');
         es.close();
         initLoginSSE();
+      } else if (d.closed) {
+        $('btnLogin').disabled = false;
+        $('btnLogin').textContent = '重新登录';
+        var msg = d.reason === 'timeout' ? '登录超时（5 分钟未操作），请重试'
+                : d.reason === 'launch_failed' ? '浏览器启动失败，请重试'
+                : '浏览器已关闭，未完成登录';
+        toast(msg, 'err');
+        es.close();
+        initLoginSSE();
       }
     } catch(ex) {}
   };
